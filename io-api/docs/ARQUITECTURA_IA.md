@@ -1,0 +1,230 @@
+# Arquitectura de la capa de IA
+
+## Estado actual
+
+| Responsabilidad | Archivo | Estado |
+|---|---|---|
+| Comportarse | `resources/prompts/tutor_system_prompt.txt` | ✅ Implementado |
+| Hacer — resolver | `infrastructure/ai/tools/SimplexTool.java` | ✅ Implementado |
+| Hacer — sugerir modelo | `infrastructure/ai/tools/SugerirModeloTool.java` | ✅ Implementado |
+| Hacer — validar modelo | `infrastructure/ai/tools/ValidarModeloTool.java` | ✅ Implementado |
+| Bus de datos tools→controller | `infrastructure/ai/ChatContextStore.java` | ✅ Implementado |
+| Saber (RAG) | `infrastructure/ai/rag/` | ⏳ Pendiente |
+| Registrar interacciones | tabla `interaccion_ia` | ⏳ Pendiente |
+
+---
+
+## El orquestador — TutorAiService
+
+Interfaz conversacional con memoria de sesión. Se construye **manualmente** en `AiConfig`
+(no usar `@AiService` del starter — da problemas con la configuración de memoria y tools).
+
+```java
+// infrastructure/ai/TutorAiService.java
+public interface TutorAiService {
+    String chat(@MemoryId String sesionId, @UserMessage String mensaje);
+}
+
+// infrastructure/ai/AiConfig.java  — bean manual
+@Bean
+public TutorAiService tutorAiService(ChatModel chatModel, SimplexTool tool) throws IOException {
+    String systemPrompt = cargarPrompt("classpath:prompts/tutor_system_prompt.txt");
+    return AiServices.builder(TutorAiService.class)
+            .chatModel(chatModel)                                           // ← ChatModel, no ChatLanguageModel
+            .chatMemoryProvider(memId -> MessageWindowChatMemory.withMaxMessages(30))
+            .tools(tool)
+            .systemMessageProvider(memId -> systemPrompt)                  // ← carga desde archivo
+            .build();
+}
+```
+
+### Memoria de sesión
+
+- **Implementación actual:** `MessageWindowChatMemory.withMaxMessages(30)` en RAM
+- **Clave:** el `sesionId` (UUID) que el cliente envía en cada request
+- **Límite:** 30 mensajes por sesión (ventana deslizante)
+- **Pérdida:** al reiniciar el servidor se pierden todas las sesiones
+
+**Para persistir en PostgreSQL** (pendiente): implementar `ChatMemoryStore` respaldado
+por la tabla `sesion` + `interaccion_ia`. El cliente no cambia — sigue enviando el mismo
+`sesionId` y LangChain4j carga/guarda automáticamente.
+
+---
+
+## Hacer — @Tool y ChatContextStore
+
+El chat es el **único entrypoint** de la capa de IA. Cuando el tutor decide sugerir
+un modelo, validarlo o resolverlo, invoca la tool correspondiente. Las tools escriben
+datos estructurados en `ChatContextStore` (ThreadLocal) y el controlador los lee al
+terminar, incluyéndolos en `ChatResponse`.
+
+### Las tres tools
+
+| Tool | Cuándo la invoca el tutor | Escribe en el store |
+|---|---|---|
+| `SugerirModeloTool.registrarModeloSugerido` | Cuando identifica el modelo completo del enunciado | `modeloSugerido: ModeloLP` |
+| `ValidarModeloTool.registrarValidacion` | Cuando evalúa el modelo del estudiante | `validacion: ValidacionResponse` |
+| `SimplexTool.resolverSimplex` | Solo cuando modelo validado y estudiante pide resolver | `resultado: SolveResult<SolucionLP>` |
+
+El tutor puede **encadenar tools** en una misma respuesta. Ejemplo: al validar un modelo
+con errores puede llamar `registrarValidacion` + `registrarModeloSugerido` (con la versión
+corregida) en el mismo turno.
+
+### ChatContextStore
+
+```java
+// infrastructure/ai/ChatContextStore.java
+@Component
+public class ChatContextStore {
+    private final ThreadLocal<DatosRespuesta> local = new ThreadLocal<>();
+
+    public void iniciar() { local.set(new DatosRespuesta()); }
+    public DatosRespuesta obtener() { ... }
+    public void limpiar() { local.remove(); }   // siempre en finally
+
+    public static class DatosRespuesta {
+        public ModeloLP modeloSugerido;
+        public ValidacionResponse validacion;
+        public SolveResult<SolucionLP> resultado;
+    }
+}
+```
+
+Funciona con ThreadLocal porque LangChain4j en modo síncrono ejecuta tools en el mismo
+hilo que `chat()`. El controlador siempre limpia en `finally`.
+
+### Flujo completo de una llamada
+
+```
+POST /api/v1/ai/chat
+    │
+    ▼
+AiChatController: contextStore.iniciar()
+    │
+    ▼
+TutorAiService.chat(sesionId, mensaje)
+    │  LLM decide qué tools invocar (0, 1 o varias)
+    │
+    ├── registrarModeloSugerido(vars, coefs, tipo, restricciones)
+    │       → contextStore.modeloSugerido = ModeloLP
+    │
+    ├── registrarValidacion(esValido, analisis, errores, sugerencias)
+    │       → contextStore.validacion = ValidacionResponse
+    │
+    └── resolverSimplex(vars, coefs, tipo, restricciones)
+            → SimplexUseCase → SimplexSolver (dominio puro)
+            → contextStore.resultado = SolveResult<SolucionLP>
+            → devuelve String con detalle de iteraciones al LLM
+    │
+    ▼
+LLM genera respuesta pedagógica usando los resultados de las tools
+    │
+    ▼
+AiChatController lee contextStore, construye ChatResponse enriquecido:
+{
+  sesionId, respuesta,
+  modeloSugerido (nullable),
+  validacion (nullable),
+  resultado (nullable)
+}
+    │
+    ▼
+contextStore.limpiar()  [en finally]
+    │
+    ▼
+Frontend actualiza formulario y/o tableau automáticamente
+```
+
+### SimplexTool — RestriccionInput y @JsonIgnoreProperties
+
+`SimplexTool.RestriccionInput` no tiene campo `tipo` (el solver solo acepta LEQ).
+`SugerirModeloTool.RestriccionInput` sí lo tiene. Como el LLM aprende los schemas de
+todas las tools, puede enviar `tipo` también al llamar `resolverSimplex`. La anotación
+`@JsonIgnoreProperties(ignoreUnknown = true)` en el record evita el error de Jackson.
+
+---
+
+## Structured Output — ModeloAiService
+
+Para extracción y validación de modelos sin memoria. LangChain4j genera automáticamente
+instrucciones JSON a partir del tipo de retorno del método.
+
+```java
+// infrastructure/ai/ModeloAiService.java
+public interface ModeloAiService {
+
+    @SystemMessage("Eres un extractor de modelos de PL...")
+    ModeloSugeridoResponse extraerModelo(@UserMessage String descripcion);
+
+    @SystemMessage("Eres un validador de modelos de PL...")
+    ValidacionResponse validarModelo(@UserMessage String descripcionYModelo);
+}
+```
+
+El método puede retornar un record anidado complejo (`ModeloSugeridoResponse` contiene
+`ModeloLP` que contiene `FuncionObjetivo` y `List<Restriccion>`). LangChain4j genera
+el schema JSON y el LLM (Llama 3.3) lo sigue sin necesidad de configuración extra.
+
+---
+
+## Comportarse — System Prompt
+
+Vive en `resources/prompts/tutor_system_prompt.txt`. Se carga en runtime (no compilado),
+por lo que puedes editarlo sin reiniciar el servidor.
+
+### Principio central del prompt
+
+El prompt es **adaptativo**: antes de responder, la IA evalúa qué información ya
+proporcionó el estudiante y solo pregunta por lo que falta.
+
+- Si el estudiante da todo de una vez → va directo a validar
+- Si da algo parcial → confirma lo que está bien, pregunta solo por lo que falta
+- Si solo hay enunciado → guía desde el principio con preguntas socráticas
+
+### Reglas inamovibles del prompt
+
+- No resolver sin modelo validado y petición explícita
+- No encadenar extracción → resolución sin intervención del estudiante
+- No preguntar por información que ya fue dada
+- No corregir directamente: usar preguntas para que el estudiante encuentre el error
+
+---
+
+## Saber — RAG (pendiente)
+
+ChromaDB está en el `docker-compose.yml` pero la integración no está implementada.
+Cuando se implemente, irá en `infrastructure/ai/rag/`:
+
+```java
+// pendiente
+@Bean
+EmbeddingStore<TextSegment> embeddingStore() {
+    return ChromaEmbeddingStore.builder()
+            .baseUrl(chromaUrl)
+            .collectionName("io-corpus")
+            .build();
+}
+
+@Bean
+ContentRetriever contentRetriever(EmbeddingStore<TextSegment> store,
+                                  EmbeddingModel embeddingModel) {
+    return EmbeddingStoreContentRetriever.builder()
+            .embeddingStore(store)
+            .embeddingModel(embeddingModel)
+            .maxResults(4)
+            .minScore(0.6)
+            .build();
+}
+```
+
+El corpus irá en `resources/corpus/` como markdown (guías conceptuales, ejemplos
+resueltos, checklists de validación por módulo). Se ingesta al arrancar si la colección
+está vacía.
+
+---
+
+## Registro de interacciones (pendiente)
+
+La tabla `interaccion_ia` ya existe en la BD. Falta el `@Repository` JPA y el adaptador
+que persista cada turno del chat (herramienta, prompt, respuesta, tool invocada, etc.).
+Esto alimenta el anexo de prompts que exige el proyecto académico.
