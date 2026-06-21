@@ -4,6 +4,8 @@ import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.service.AiServices;
 import jpap.dev.io_api.infrastructure.ai.tools.SimplexTool;
+import jpap.dev.io_api.infrastructure.ai.tools.SugerirModeloTool;
+import jpap.dev.io_api.infrastructure.ai.tools.ValidarModeloTool;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.Resource;
@@ -25,16 +27,19 @@ public class AiConfig {
      * Tutor socrático conversacional.
      * - Memoria por sesión (hasta 30 mensajes)
      * - System prompt cargado desde fichero (fácil de editar sin recompilar)
-     * - SimplexTool registrado: el LLM puede invocarla autónomamente
+     * - Tres tools registradas: el LLM actualiza la UI vía ChatContextStore
      */
     @Bean
-    public TutorAiService tutorAiService(ChatModel chatModel, SimplexTool tool)
+    public TutorAiService tutorAiService(ChatModel chatModel,
+                                         SimplexTool simplexTool,
+                                         SugerirModeloTool sugerirTool,
+                                         ValidarModeloTool validarTool)
             throws IOException {
         String systemPrompt = cargarPrompt("classpath:prompts/tutor_system_prompt.txt");
         return AiServices.builder(TutorAiService.class)
                 .chatModel(chatModel)
                 .chatMemoryProvider(memId -> MessageWindowChatMemory.withMaxMessages(30))
-                .tools(tool)
+                .tools(simplexTool, sugerirTool, validarTool)
                 .systemMessageProvider(memId -> systemPrompt)
                 .build();
     }

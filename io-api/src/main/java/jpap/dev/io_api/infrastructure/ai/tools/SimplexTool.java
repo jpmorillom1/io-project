@@ -1,17 +1,20 @@
 package jpap.dev.io_api.infrastructure.ai.tools;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.model.output.structured.Description;
 import jpap.dev.io_api.application.lp.SimplexUseCase;
 import jpap.dev.io_api.domain.common.SolveResult;
 import jpap.dev.io_api.domain.common.SolveStatus;
+import jpap.dev.io_api.domain.common.SolveStep;
 import jpap.dev.io_api.domain.lp.FuncionObjetivo;
 import jpap.dev.io_api.domain.lp.ModeloLP;
 import jpap.dev.io_api.domain.lp.Restriccion;
 import jpap.dev.io_api.domain.lp.SolucionLP;
 import jpap.dev.io_api.domain.lp.TipoObjetivo;
 import jpap.dev.io_api.domain.lp.TipoRestriccion;
+import jpap.dev.io_api.infrastructure.ai.ChatContextStore;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -26,12 +29,19 @@ import java.util.List;
 public class SimplexTool {
 
     private final SimplexUseCase simplexUseCase;
+    private final ChatContextStore contextStore;
 
-    public SimplexTool(SimplexUseCase simplexUseCase) {
+    public SimplexTool(SimplexUseCase simplexUseCase, ChatContextStore contextStore) {
         this.simplexUseCase = simplexUseCase;
+        this.contextStore = contextStore;
     }
 
-    /** Tipo auxiliar para describir cada restricción al LLM (siempre LEQ para Simplex estándar). */
+    /**
+     * Tipo auxiliar para describir cada restricción al LLM.
+     * @JsonIgnoreProperties ignora "tipo" si el LLM lo envía — SimplexSolver
+     * siempre usa LEQ, así que el campo no aplica aquí.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public record RestriccionInput(
             @Description("Coeficientes de la restricción en el mismo orden que las variables de decisión")
             List<Double> coeficientes,
@@ -80,40 +90,65 @@ public class SimplexTool {
         log.info("[TOOL] resolverSimplex completado — status={}, Z*={}, pasos={}",
                 resultado.status(), zStar, resultado.steps().size());
 
+        contextStore.obtener().resultado = resultado;
+
         return formatearParaTutor(resultado, variables);
     }
 
+    @SuppressWarnings("unchecked")
     private String formatearParaTutor(SolveResult<SolucionLP> r, List<String> vars) {
         StringBuilder sb = new StringBuilder();
         sb.append("=== RESULTADO DEL SOLVER ===\n");
         sb.append("Estado: ").append(r.status().name()).append("\n");
 
         if (r.status() == SolveStatus.NO_ACOTADO) {
-            sb.append("El problema no está acotado: la función objetivo puede crecer indefinidamente.\n");
-            sb.append("Revisa con el estudiante si falta alguna restricción.\n");
+            sb.append("El problema NO ESTÁ ACOTADO: la función objetivo crece sin límite.\n");
+            sb.append("Pregunta al estudiante si falta alguna restricción que lo limite.\n");
             return sb.toString();
         }
 
         if (r.status() == SolveStatus.INFACTIBLE) {
-            sb.append("El problema es infactible: no existe solución que satisfaga todas las restricciones.\n");
+            sb.append("El problema es INFACTIBLE: ningún punto satisface todas las restricciones simultáneamente.\n");
             return sb.toString();
         }
 
         if (r.solution() != null) {
             sb.append("Valor óptimo Z* = ").append(r.solution().valorOptimo()).append("\n");
-            sb.append("Solución:\n");
+            sb.append("Solución óptima:\n");
             r.solution().valores().forEach((v, val) ->
                     sb.append("  ").append(v).append(" = ").append(val).append("\n"));
         }
 
         if (r.status() == SolveStatus.MULTIPLE_OPTIMO) {
-            sb.append("Nota: El problema tiene óptimos múltiples (hay otras soluciones con el mismo Z*).\n");
+            sb.append("Nota: existen óptimos múltiples — hay otras soluciones con el mismo Z*.\n");
         }
 
-        int iteraciones = Math.max(0, r.steps().size() - 2);
-        sb.append("Iteraciones del Simplex: ").append(iteraciones).append("\n");
-        sb.append("Pasos del tableau disponibles para revisar: ").append(r.steps().size()).append("\n");
-        sb.append("\nAhora pregunta al estudiante cómo interpreta este resultado.");
+        // Detalle de iteraciones para que el tutor pueda explicarlas
+        sb.append("\n--- DETALLE DE ITERACIONES ---\n");
+        for (SolveStep step : r.steps()) {
+            sb.append("Paso ").append(step.numero()).append(": ").append(step.titulo()).append("\n");
+            Object varEntra = step.datos().get("varEntra");
+            Object varSale  = step.datos().get("varSale");
+            if (varEntra != null) {
+                sb.append("  Entra a la base: ").append(varEntra).append("\n");
+                sb.append("  Sale de la base: ").append(varSale).append("\n");
+            }
+            Object base = step.datos().get("base");
+            if (base != null) {
+                sb.append("  Base resultante: ").append(base).append("\n");
+            }
+            // Valor de z en este paso (último elemento de la fila z)
+            Object tableau = step.datos().get("tableau");
+            if (tableau instanceof List<?> filas && !((List<?>) filas).isEmpty()) {
+                List<?> filaZ = (List<?>) filas.get(filas.size() - 1);
+                if (!filaZ.isEmpty()) {
+                    sb.append("  Valor z acumulado: ").append(filaZ.get(filaZ.size() - 1)).append("\n");
+                }
+            }
+        }
+
+        sb.append("\nLa interfaz ya muestra el tableau. Pregunta al estudiante qué resultado esperaba ");
+        sb.append("y qué significa la solución en el contexto del problema real.");
 
         return sb.toString();
     }

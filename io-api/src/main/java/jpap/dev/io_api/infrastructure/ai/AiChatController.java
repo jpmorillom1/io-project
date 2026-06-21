@@ -3,6 +3,7 @@ package jpap.dev.io_api.infrastructure.ai;
 import jpap.dev.io_api.domain.lp.FuncionObjetivo;
 import jpap.dev.io_api.domain.lp.Restriccion;
 import jpap.dev.io_api.domain.lp.TipoRestriccion;
+import jpap.dev.io_api.infrastructure.ai.ChatContextStore.DatosRespuesta;
 import jpap.dev.io_api.infrastructure.ai.dto.ChatRequest;
 import jpap.dev.io_api.infrastructure.ai.dto.ChatResponse;
 import jpap.dev.io_api.infrastructure.ai.dto.ModeloSugeridoResponse;
@@ -33,10 +34,14 @@ public class AiChatController {
 
     private final TutorAiService tutorAiService;
     private final ModeloAiService modeloAiService;
+    private final ChatContextStore contextStore;
 
-    public AiChatController(TutorAiService tutorAiService, ModeloAiService modeloAiService) {
+    public AiChatController(TutorAiService tutorAiService,
+                            ModeloAiService modeloAiService,
+                            ChatContextStore contextStore) {
         this.tutorAiService = tutorAiService;
         this.modeloAiService = modeloAiService;
+        this.contextStore = contextStore;
     }
 
     /**
@@ -58,10 +63,26 @@ public class AiChatController {
                 sesionId, sesionNueva, request.mensaje().length());
         log.debug("[AI/chat] mensaje: {}", request.mensaje());
 
-        String respuesta = tutorAiService.chat(sesionId, request.mensaje());
+        contextStore.iniciar();
+        try {
+            String respuesta = tutorAiService.chat(sesionId, request.mensaje());
+            DatosRespuesta datos = contextStore.obtener();
 
-        log.debug("[AI/chat] respuesta: {}", respuesta);
-        return ResponseEntity.ok(new ChatResponse(sesionId, respuesta));
+            log.info("[AI/chat] tools invocadas — modelo={} validacion={} resultado={}",
+                    datos.modeloSugerido != null,
+                    datos.validacion != null,
+                    datos.resultado != null);
+            log.debug("[AI/chat] respuesta: {}", respuesta);
+
+            return ResponseEntity.ok(new ChatResponse(
+                    sesionId, respuesta,
+                    datos.modeloSugerido,
+                    datos.validacion,
+                    datos.resultado
+            ));
+        } finally {
+            contextStore.limpiar();
+        }
     }
 
     /**
