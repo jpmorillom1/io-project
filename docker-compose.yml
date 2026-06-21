@@ -1,0 +1,37 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: io-postgres
+    environment:
+      POSTGRES_DB: io_platform
+      POSTGRES_USER: io_user
+      POSTGRES_PASSWORD: io_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U io_user -d io_platform"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  chroma:
+    image: chromadb/chroma:latest
+    container_name: io-chroma
+    environment:
+      IS_PERSISTENT: "TRUE"
+      CHROMA_SERVER_HOST: 0.0.0.0
+    ports:
+      - "8000:8000"
+    volumes:
+      - chromadata:/chroma/chroma
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/api/v1/heartbeat || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
+  chromadata:
