@@ -9,7 +9,7 @@
 | Hacer — sugerir modelo | `infrastructure/ai/tools/SugerirModeloTool.java` | ✅ Implementado |
 | Hacer — validar modelo | `infrastructure/ai/tools/ValidarModeloTool.java` | ✅ Implementado |
 | Bus de datos tools→controller | `infrastructure/ai/ChatContextStore.java` | ✅ Implementado |
-| Saber (RAG) | `infrastructure/ai/rag/` | ⏳ Pendiente |
+| Saber (RAG) | `infrastructure/ai/rag/` (RagConfig + CorpusIngester) | ✅ Implementado |
 | Registrar interacciones | tabla `interaccion_ia` | ⏳ Pendiente |
 
 ---
@@ -190,36 +190,127 @@ proporcionó el estudiante y solo pregunta por lo que falta.
 
 ---
 
-## Saber — RAG (pendiente)
+## Saber — RAG ✅ IMPLEMENTADO
 
-ChromaDB está en el `docker-compose.yml` pero la integración no está implementada.
-Cuando se implemente, irá en `infrastructure/ai/rag/`:
+El tutor accede a un corpus de teoría mediante Retrieval Augmented Generation (RAG).
 
+### Componentes
+
+**`RagConfig.java`** — beans de RAG:
 ```java
-// pendiente
 @Bean
-EmbeddingStore<TextSegment> embeddingStore() {
+public EmbeddingModel embeddingModel() {
+    return new AllMiniLmL6V2QuantizedEmbeddingModel();  // local, ~100MB
+}
+
+@Bean
+public EmbeddingStore<TextSegment> embeddingStore(@Value("${app.chroma-url}") String chromaUrl) {
     return ChromaEmbeddingStore.builder()
+            .apiVersion(ChromaApiVersion.V2)  // ← CRÍTICO: Chroma v2 API
             .baseUrl(chromaUrl)
             .collectionName("io-corpus")
             .build();
 }
 
 @Bean
-ContentRetriever contentRetriever(EmbeddingStore<TextSegment> store,
-                                  EmbeddingModel embeddingModel) {
+public ContentRetriever contentRetriever(EmbeddingStore<TextSegment> store,
+                                         EmbeddingModel embeddingModel) {
     return EmbeddingStoreContentRetriever.builder()
             .embeddingStore(store)
             .embeddingModel(embeddingModel)
-            .maxResults(4)
-            .minScore(0.6)
+            .maxResults(6)      // 4 resultados era poco, 6 es mejor
+            .minScore(0.5)      // 0.6 era muy estricto para AllMiniLM
             .build();
 }
 ```
 
-El corpus irá en `resources/corpus/` como markdown (guías conceptuales, ejemplos
-resueltos, checklists de validación por módulo). Se ingesta al arrancar si la colección
-está vacía.
+**`CorpusIngester.java`** — carga automática del corpus en ChromaDB:
+```java
+@PostConstruct
+public void ingestar() throws IOException {
+    if (!reingestar) { log.info("[RAG] re-ingesta omitida"); return; }
+    
+    embeddingStore.removeAll();  // limpiar para evitar duplicados
+    
+    PathMatchingResourcePatternResolver resolver = new PathMatchingResourcePatternResolver();
+    Resource[] recursos = resolver.getResources("classpath:corpus/**/*.md");
+    
+    DocumentSplitter splitter = DocumentSplitters.recursive(350, 30);
+    EmbeddingStoreIngestor ingestor = EmbeddingStoreIngestor.builder()
+            .documentSplitter(splitter)
+            .embeddingModel(embeddingModel)
+            .embeddingStore(embeddingStore)
+            .build();
+    
+    for (Resource recurso : recursos) {
+        ingestor.ingest(Document.from(recurso.getContentAsString()));
+    }
+}
+```
+
+**Integración en `AiConfig.java`**:
+```java
+@Bean
+public TutorAiService tutorAiService(..., ContentRetriever contentRetriever) {
+    return AiServices.builder(TutorAiService.class)
+            ...
+            .contentRetriever(contentRetriever)  // ← injecta fragmentos automáticamente
+            .build();
+}
+```
+
+### Corpus
+
+6 archivos markdown en `resources/corpus/lp/`:
+1. **01_que_es_programacion_lineal.md** — qué es PL, cuándo aplica, propiedades formales
+2. **02_como_formular_un_modelo_lp.md** — paso a paso de formulación, ejemplos
+3. **03_metodo_simplex_teoria.md** — tableau, Dantzig, razón mínima, pivote
+4. **04_interpretacion_de_resultados.md** — lectura de solución, holguras (sᵢ=0 vs >0), precios sombra
+5. **05_casos_especiales.md** — infactible, no acotado, óptimos múltiples
+6. **06_errores_comunes_al_modelar.md** — 6 errores de formulación comunes
+
+Total: **~60 chunks** de 350 chars con overlap de 30.
+
+### Flujo en cada turno del chat
+
+```
+Estudiante: "¿Qué es una variable de holgura?"
+    │
+    ▼
+LangChain4j embede la pregunta con AllMiniLM
+    │
+    ▼
+Busca en ChromaDB: 6 fragmentos más similares (score ≥ 0.5)
+    │  Recupera: chunk de 04_interpretacion_de_resultados.md
+    │
+    ▼
+Inyecta automáticamente en el prompt:
+"Answer using the following information:
+## Significado de las variables de holgura...
+sᵢ = 0 significa recurso completamente agotado...
+sᵢ > 0 significa capacidad sobrante..."
+    │
+    ▼
+LLM (Llama 3.3-70b) genera respuesta usando el contexto RAG
+    │
+    ▼
+Tutor responde fundamentado en la teoría, no inventando
+```
+
+### Parámetros críticos
+
+- **Chunking**: 350 chars + 30 de overlap → cada sección `##` queda autocontenida
+- **Retrieval**: 6 fragmentos, score ≥ 0.5 (balance entre relevancia y cobertura)
+- **Re-ingesta**: `app.rag.reingestar` en `application.yaml` (default false)
+  - Si modificas los `.md`: arranca con `RAG_REINGESTAR=true` una vez
+  
+### Notas importantes
+
+- **ChromaDB v2 API es obligatorio** — LangChain4j 1.13.0-beta23 no soporta v1
+- **AllMiniLM corre local en CPU** — no requiere API key, no es una dependencia externa
+- **El `ModeloAiService` NO recibe ContentRetriever** — solo el `TutorAiService` lo usa
+- **Exclusión en build.gradle**: `exclude group: 'dev.langchain4j', module: 'langchain4j-http-client-jdk'`
+  (evita conflicto con Spring RestClient)
 
 ---
 

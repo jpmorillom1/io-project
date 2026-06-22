@@ -37,7 +37,8 @@ de un módulo TODO sin que se te indique explícitamente.
 - **Frontend:** React + Vite (en `io-ui/`, aún en desarrollo)
 - **IA:** LangChain4j **1.13.0** (ver nota crítica abajo)
 - **LLM:** OpenAI-compatible apuntado a **Groq** (`llama-3.3-70b-versatile`)
-- **RAG vector store:** ChromaDB (pendiente de integrar)
+- **Embeddings:** AllMiniLM-L6-V2 Quantized (local, sin API key)
+- **RAG vector store:** ChromaDB v2 API (Chroma 0.6+, **IMPLEMENTADO**)
 - **BD relacional:** PostgreSQL 16
 - **Build:** Gradle con flag `-parameters` (necesario para Jackson + records)
 
@@ -167,7 +168,53 @@ Tres responsabilidades separadas (detalle en `docs/ARQUITECTURA_IA.md`):
 
 - **Comportarse** → `prompts/tutor_system_prompt.txt` — tutor socrático adaptativo
 - **Hacer** → `@Tool` en `infrastructure/ai/tools/` — nunca en domain
-- **Saber** → RAG con ChromaDB — **pendiente de implementar** (ver `docs/RAG_IMPLEMENTATION_GUIDE.md`)
+- **Saber** → RAG con ChromaDB — **IMPLEMENTADO** (ver detalles abajo)
+
+### RAG — Retrieval Augmented Generation (IMPLEMENTADO )
+
+El tutor accede a un corpus de teoría de IO mediante embeddings:
+
+**Corpus** — 6 archivos `.md` en `src/main/resources/corpus/lp/`:
+- `01_que_es_programacion_lineal.md` — definición, cuándo aplica, características formales
+- `02_como_formular_un_modelo_lp.md` — paso a paso de formulación, ejemplos
+- `03_metodo_simplex_teoria.md` — tableau, regla Dantzig, razón mínima, pivote, optimalidad
+- `04_interpretacion_de_resultados.md` — lectura de solución, holguras (sᵢ=0 vs sᵢ>0), precios sombra
+- `05_casos_especiales.md` — infactible, no acotado, óptimos múltiples, degeneración
+- `06_errores_comunes_al_modelar.md` — 6 errores frecuentes de formulación (MAX/MIN, coeficientes, etc.)
+
+**Ingesta** — `infrastructure/ai/rag/CorpusIngester.java`:
+- Al arrancar: carga todos los `.md`, chunking 350 chars + 30 de overlap
+- Genera ~60 chunks de la teoría de IO
+- Almacena en ChromaDB colección `io-corpus` (v2 API)
+- Control de re-ingesta via `app.rag.reingestar` (default: false después de la primera carga)
+
+**Retrieval** — `infrastructure/ai/rag/RagConfig.java`:
+- Bean `EmbeddingModel`: AllMiniLmL6V2QuantizedEmbeddingModel (local, ~100MB)
+- Bean `ContentRetriever`: máximo 6 fragmentos por consulta, score mínimo 0.5
+- Inyectado automáticamente en `TutorAiService` via `.contentRetriever(...)`
+
+**Cómo funciona** — en cada turno del chat:
+1. Estudiante pregunta → LangChain4j embede la pregunta
+2. Busca en ChromaDB los 6 fragmentos más similares (score ≥ 0.5)
+3. Los inyecta como contexto en el prompt del LLM: "Usa la siguiente información para responder..."
+4. El tutor responde fundamentado en la teoría, no solo en conocimiento general
+
+**Notas críticas**:
+- ChromaDB debe estar corriendo: `docker compose up chromadb -d`
+- ChromaDB v2 API (no v1) — LangChain4j 1.13.0-beta23 requiere `.apiVersion(ChromaApiVersion.V2)`
+- Excluir `langchain4j-http-client-jdk` en `build.gradle` para evitar conflicto con Spring RestClient
+- El `ModeloAiService` (extracción/validación estructurada) NO recibe ContentRetriever — no lo necesita
+
+**Cómo re-ingestar si cambias el corpus**:
+```bash
+# 1. Editar archivos .md en src/main/resources/corpus/lp/
+# 2. Arrancar con:
+RAG_REINGESTAR=true gradle bootRun
+# 3. Una vez que ingeste, volver a:
+RAG_REINGESTAR=false gradle bootRun  (default en application.yaml)
+```
+
+---
 
 El tutor NO da la solución directamente. Solo invoca `resolverSimplex` cuando:
 1. El modelo está completamente validado
@@ -197,6 +244,7 @@ La memoria de sesión es **en RAM** (se pierde al reiniciar). La persistencia en
 - ❌ No conviertas un resultado "infactible/no acotado" en una excepción.
 - ❌ No uses `ChatLanguageModel` — en LangChain4j 1.13.0 es `ChatModel`.
 - ❌ No uses `@AiService` del starter para nuevos services — usa `AiServices.builder()`.
+- ❌ No modifiques los archivos `.md` del corpus sin re-ingestar (`RAG_REINGESTAR=true`).
 
 ---
 
@@ -285,4 +333,4 @@ el método correcto por el tipo de restricciones del modelo.
 - `docs/ESTRUCTURA_PAQUETES.md` — árbol de paquetes real del proyecto
 - `docs/MODULOS_IO.md` — especificación matemática de cada solver
 - `docs/FRONTEND_INTEGRATION.md` — guía completa para el agente React
-- `docs/RAG_IMPLEMENTATION_GUIDE.md` — guía para implementar RAG con ChromaDB (corpus + ingesta + retriever)
+- `docs/RAG_IMPLEMENTATION_GUIDE.md` — (COMPLETADO ) guía de la implementación RAG

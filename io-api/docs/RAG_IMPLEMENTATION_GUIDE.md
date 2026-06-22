@@ -1,7 +1,7 @@
 # Guía de implementación RAG — io-api
 
-> Esta guía es para la sesión que va a implementar el RAG.
-> Lee también `docs/ARQUITECTURA_IA.md` para entender cómo encaja con la capa de IA existente.
+> **STATUS: COMPLETADO ** — Esta guía documenta la implementación del RAG realizada.
+> Para más contexto, lee `CLAUDE.md` sección 7 y `docs/ARQUITECTURA_IA.md`.
 
 ---
 
@@ -306,33 +306,49 @@ no solo en el conocimiento general del LLM
 
 ---
 
-## Consideraciones para la sesión de implementación
+## Status actual de la implementación 
 
-- **ChromaDB debe estar corriendo** antes de arrancar la app. El `docker-compose.yml`
-  ya lo tiene definido — solo ejecutar `docker compose up chromadb -d`.
+### Completado
+-  Corpus de 6 archivos `.md` en `src/main/resources/corpus/lp/`
+-  `RagConfig.java` con EmbeddingModel + EmbeddingStore + ContentRetriever
+-  `CorpusIngester.java` con carga automática e ingesta controlada
+-  Modificación de `AiConfig.java` para inyectar ContentRetriever en TutorAiService
+-  Exclusión de `langchain4j-http-client-jdk` en `build.gradle` para evitar conflictos HTTP
+-  ChromaDB API v2 configurado correctamente (`.apiVersion(ChromaApiVersion.V2)`)
+-  Corpus ingestado: 53 chunks en colección `io-corpus`
+-  Tests de recuperación: RAG recupera fragmentos correctos y los inyecta en el prompt
+-  Correcciones de corpus: archivos 04 y 06 ajustados para mejor recuperación
 
-- **La primera vez que arranque**, la ingesta puede tardar 10-30 segundos dependiendo
-  del volumen del corpus (AllMiniLM corre local, en CPU).
+### Parámetros recomendados (ya configurados)
+- **Chunking**: 350 caracteres con 30 de overlap (cada sección `##` queda autocontenida)
+- **Retrieval**: máximo 6 fragmentos, score mínimo 0.5
+- **Re-ingesta**: `app.rag.reingestar = false` (por defecto, solo true cuando cambias el corpus)
 
-- **`minScore: 0.6`** es un punto de partida razonable. Si el tutor trae fragmentos
-  irrelevantes, súbelo a 0.7. Si no recupera nada útil, bájalo a 0.5.
+### Notas operacionales
 
-- **`maxResults: 4`** agrega ~4 fragmentos de ~500 chars = ~2000 chars de contexto extra
-  por turno. Con Llama 3.3-70b en Groq esto es manejable, pero si ves que las respuestas
-  se vuelven lentas o incoherentes, baja a 2-3.
+- **ChromaDB debe estar corriendo** antes de arrancar la app:
+  ```bash
+  docker compose up chromadb -d
+  ```
+
+- **La primera carga** ingesta los 6 archivos en ~10-30 segundos (AllMiniLM en CPU).
+
+- **Si modificas los archivos `.md`**: Reinicia con `RAG_REINGESTAR=true`, luego vuelve a `false`.
 
 - **El `ModeloAiService`** (extracción y validación estructurada) deliberadamente NO
-  recibe el `ContentRetriever` — no necesita teoría, necesita precisión en el JSON.
-  Solo el `TutorAiService` lo usa.
+  recibe el `ContentRetriever` — solo el `TutorAiService` lo usa para teoría.
 
 ---
 
-## Archivos que tocar en esa sesión
+## Archivos modificados en esta sesión 
 
-| Acción | Archivo |
-|---|---|
-| Crear | `src/main/resources/corpus/lp/*.md` (el corpus) |
-| Crear | `infrastructure/ai/rag/RagConfig.java` |
-| Crear | `infrastructure/ai/rag/CorpusIngester.java` |
-| Modificar | `infrastructure/ai/AiConfig.java` (añadir `.contentRetriever(...)`) |
-| Verificar | `application.yaml` — que `app.chroma-url` apunte al Chroma correcto |
+| Acción | Archivo | Status |
+|---|---|---|
+| Crear | `src/main/resources/corpus/lp/01_*.md` a `06_*.md` (6 archivos) |  DONE |
+| Crear | `infrastructure/ai/rag/RagConfig.java` |  DONE |
+| Crear | `infrastructure/ai/rag/CorpusIngester.java` |  DONE |
+| Modificar | `infrastructure/ai/AiConfig.java` (añadir `.contentRetriever(...)`) |  DONE |
+| Modificar | `build.gradle` (exclude `langchain4j-http-client-jdk`) |  DONE |
+| Verificar | `application.yaml` — chroma-url, app.rag.reingestar |  DONE |
+| Corregir | `corpus/lp/04_*.md` — sección de holgura (sᵢ=0 vs sᵢ>0) |  DONE |
+| Corregir | `corpus/lp/06_*.md` — estructura para mejor recuperación |  DONE |
