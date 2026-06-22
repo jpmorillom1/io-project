@@ -39,7 +39,13 @@ export function TableauViewer({ resultado }: Props) {
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <span className="text-sm text-slate-600 min-w-[80px] text-center">
+            <span
+              className="text-sm min-w-[80px] text-center"
+              style={{
+                fontFamily: "'JetBrains Mono', monospace",
+                color: 'var(--ij-text-secondary)',
+              }}
+            >
               {nav.numeroPaso} / {nav.totalPasos}
             </span>
             <Button
@@ -52,19 +58,43 @@ export function TableauViewer({ resultado }: Props) {
             </Button>
           </div>
         </div>
-        <p className="text-sm font-semibold text-slate-700 mt-1">{titulo}</p>
-        <p className="text-xs text-slate-500">{descripcion}</p>
+        <p className="text-sm font-semibold mt-1" style={{ color: 'var(--ij-text-primary)' }}>
+          {titulo}
+        </p>
+        <p className="text-xs" style={{ color: 'var(--ij-text-secondary)' }}>
+          {descripcion}
+        </p>
       </CardHeader>
 
       {datos.varEntra && (
         <>
-          <div className="px-4 pb-2 flex gap-4 text-xs text-slate-600 flex-wrap">
+          <div className="px-4 pb-2 flex gap-4 text-xs flex-wrap">
             <span>
-              <span className="text-blue-600 font-semibold">Entra:</span> {datos.varEntra}
+              <span
+                className="font-semibold"
+                style={{ fontFamily: "'JetBrains Mono', monospace", color: 'var(--ij-cyan)' }}
+              >
+                Entra:
+              </span>{' '}
+              <span
+                style={{ fontFamily: "'JetBrains Mono', monospace", color: 'var(--ij-purple)' }}
+              >
+                {datos.varEntra}
+              </span>
             </span>
             {datos.varSale && (
               <span>
-                <span className="text-yellow-600 font-semibold">Sale:</span> {datos.varSale}
+                <span
+                  className="font-semibold"
+                  style={{ fontFamily: "'JetBrains Mono', monospace", color: 'var(--ij-orange)' }}
+                >
+                  Sale:
+                </span>{' '}
+                <span
+                  style={{ fontFamily: "'JetBrains Mono', monospace", color: 'var(--ij-purple)' }}
+                >
+                  {datos.varSale}
+                </span>
               </span>
             )}
           </div>

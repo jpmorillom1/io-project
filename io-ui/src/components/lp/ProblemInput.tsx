@@ -15,16 +15,20 @@ export function ProblemInput() {
         value={descripcionProblema}
         onChange={e => setDescripcion(e.target.value)}
         placeholder="Describe tu problema de programación lineal en lenguaje natural..."
-        className="min-h-[100px] resize-none text-sm"
+        className="min-h-[100px]"
       />
       {advertencias.length > 0 && (
-        <ul className="text-xs text-amber-600 space-y-0.5">
+        <ul className="space-y-0.5">
           {advertencias.map((a, i) => (
-            <li key={i}>⚠ {a}</li>
+            <li key={i} className="text-xs" style={{ color: 'var(--ij-amber)' }}>
+              ⚠ {a}
+            </li>
           ))}
         </ul>
       )}
-      {error && <p className="text-xs text-red-600">{error}</p>}
+      {error && (
+        <p className="text-xs" style={{ color: 'var(--ij-red)' }}>{error}</p>
+      )}
       <div className="flex justify-end">
         <Button
           variant="secondary"

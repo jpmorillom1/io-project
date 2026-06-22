@@ -2,36 +2,73 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84.6% 4.1%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84.6% 4.1%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84.6% 4.1%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
-    --radius: 0.5rem;
+    --ij-bg-editor:    #1E1F22;
+    --ij-bg-secondary: #282B30;
+    --ij-bg-hover:     #393840;
+    --ij-bg-selection: #43454A;
+    --ij-bg-active:    #4E5157;
+
+    --ij-text-primary:   #DFE1E5;
+    --ij-text-secondary: #6F737A;
+    --ij-text-muted:     #9DA0A8;
+    --ij-text-default:   #BDC9C9;
+
+    --ij-cyan:    #51C8CF;
+    --ij-orange:  #C09468;
+    --ij-blue:    #76AEFF;
+    --ij-purple:  #CF84CF;
+    --ij-green:   #6CAB74;
+    --ij-teal:    #14C4B6;
+    --ij-red:     #FF5263;
+    --ij-amber:   #FFC859;
+    --ij-link:    #548AF7;
+    --ij-comment: #6E798A;
+
+    --ij-border: #393840;
   }
 
   * {
-    border-color: hsl(var(--border));
+    box-sizing: border-box;
   }
 
   body {
-    background-color: hsl(var(--background));
-    color: hsl(var(--foreground));
-    font-family: system-ui, -apple-system, sans-serif;
+    background-color: var(--ij-bg-secondary);
+    color: var(--ij-text-primary);
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-size: 13px;
+    line-height: 16px;
     margin: 0;
+  }
+
+  select {
+    background-color: var(--ij-bg-editor);
+    color: var(--ij-text-primary);
+    border: 1px solid var(--ij-border);
+    border-radius: 4px;
+    padding: 0 8px;
+    outline: none;
+  }
+
+  select:focus {
+    border-color: var(--ij-blue);
+  }
+
+  select option {
+    background-color: var(--ij-bg-secondary);
+    color: var(--ij-text-primary);
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: var(--ij-bg-secondary);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--ij-bg-active);
+    border-radius: 3px;
   }
 }

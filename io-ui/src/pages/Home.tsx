@@ -1,5 +1,4 @@
 import { useNavigate } from 'react-router'
-import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 
 const MODULOS = [
@@ -15,34 +14,62 @@ export function Home() {
   const navigate = useNavigate()
 
   return (
-    <div className="min-h-screen bg-slate-50 p-8">
+    <div className="min-h-screen p-8" style={{ background: 'var(--ij-bg-secondary)' }}>
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-2xl font-bold text-slate-800 mb-1">Plataforma IO</h1>
-        <p className="text-slate-500 text-sm mb-8">Selecciona un módulo para comenzar</p>
+        <h1
+          className="font-semibold mb-1"
+          style={{ fontSize: '20px', lineHeight: '24px', color: 'var(--ij-text-primary)' }}
+        >
+          Plataforma IO
+        </h1>
+        <p className="mb-8" style={{ fontSize: '13px', color: 'var(--ij-text-secondary)' }}>
+          Selecciona un módulo para comenzar
+        </p>
         <div className="grid grid-cols-3 gap-4">
           {MODULOS.map(m => (
-            <Card
-              key={m.id}
-              className={`cursor-pointer transition-all ${
-                m.disponible
-                  ? 'hover:shadow-md hover:border-blue-300 border-slate-200'
-                  : 'opacity-60 cursor-not-allowed border-slate-100'
-              }`}
-              onClick={() => m.disponible && navigate(m.path)}
-            >
-              <CardContent className="p-5">
-                <p className="font-semibold text-slate-800 text-sm">{m.label}</p>
-                <p className="text-xs text-slate-500 mt-0.5">{m.desc}</p>
-                {!m.disponible && (
-                  <Badge variant="secondary" className="mt-2 text-xs">
-                    Próximamente
-                  </Badge>
-                )}
-              </CardContent>
-            </Card>
+            <ModuloCard key={m.id} modulo={m} onClick={() => m.disponible && navigate(m.path)} />
           ))}
         </div>
       </div>
+    </div>
+  )
+}
+
+interface ModuloCardProps {
+  modulo: typeof MODULOS[number]
+  onClick: () => void
+}
+
+function ModuloCard({ modulo: m, onClick }: ModuloCardProps) {
+  return (
+    <div
+      className={`rounded-[4px] p-5 transition-colors duration-[120ms] ${
+        m.disponible ? 'cursor-pointer' : 'opacity-60 cursor-not-allowed'
+      }`}
+      style={{
+        background: 'var(--ij-bg-editor)',
+        borderLeft: m.id === 'lp-simplex' ? '2px solid var(--ij-teal)' : undefined,
+      }}
+      onMouseEnter={e => {
+        if (m.disponible)
+          (e.currentTarget as HTMLElement).style.background = 'var(--ij-bg-hover)'
+      }}
+      onMouseLeave={e => {
+        (e.currentTarget as HTMLElement).style.background = 'var(--ij-bg-secondary)'
+      }}
+      onClick={onClick}
+    >
+      <p className="font-semibold text-sm" style={{ color: 'var(--ij-text-primary)' }}>
+        {m.label}
+      </p>
+      <p className="text-xs mt-0.5" style={{ color: 'var(--ij-text-secondary)' }}>
+        {m.desc}
+      </p>
+      {!m.disponible && (
+        <Badge variant="secondary" className="mt-2 text-xs">
+          Próximamente
+        </Badge>
+      )}
     </div>
   )
 }

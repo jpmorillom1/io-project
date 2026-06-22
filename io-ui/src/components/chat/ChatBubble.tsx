@@ -11,11 +11,14 @@ export function ChatBubble({ mensaje }: Props) {
     <div className={cn('flex', isUser ? 'justify-end' : 'justify-start')}>
       <div
         className={cn(
-          'max-w-[85%] rounded-2xl px-3 py-2 text-sm leading-relaxed',
-          isUser
-            ? 'bg-blue-600 text-white rounded-tr-sm'
-            : 'bg-slate-100 text-slate-800 rounded-tl-sm'
+          'max-w-[85%] rounded-[4px] px-3 py-2 leading-relaxed',
+          isUser ? 'rounded-tr-none' : 'rounded-tl-none'
         )}
+        style={{
+          fontSize: '13px',
+          background: isUser ? 'var(--ij-bg-selection)' : 'var(--ij-bg-hover)',
+          color: 'var(--ij-text-default)',
+        }}
       >
         {mensaje.texto}
       </div>

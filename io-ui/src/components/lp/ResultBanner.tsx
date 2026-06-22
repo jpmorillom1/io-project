@@ -9,17 +9,33 @@ export function ResultBanner({ resultado }: Props) {
   if (resultado.status === 'OPTIMO' || resultado.status === 'MULTIPLE_OPTIMO') {
     const sol = resultado.solution!
     return (
-      <div className="rounded-lg border border-green-200 bg-green-50 p-4">
-        <p className="font-semibold text-green-800 text-sm">
+      <div
+        className="rounded-[4px] p-4"
+        style={{
+          background: 'rgba(106,171,116,0.1)',
+          borderLeft: '2px solid var(--ij-green)',
+        }}
+      >
+        <p className="font-semibold text-sm" style={{ color: 'var(--ij-green)' }}>
           {resultado.status === 'OPTIMO' ? 'Solución óptima' : 'Soluciones óptimas múltiples'}
         </p>
-        <p className="mt-1 text-green-700 text-lg font-mono">
-          Z* = {formatNum(sol.valorOptimo)}
+        <p
+          className="mt-1 text-lg"
+          style={{ fontFamily: "'JetBrains Mono', monospace", color: 'var(--ij-green)' }}
+        >
+          <span style={{ color: 'var(--ij-text-secondary)' }}>Z* = </span>
+          {formatNum(sol.valorOptimo)}
         </p>
         <div className="mt-2 flex gap-4 flex-wrap">
           {Object.entries(sol.valores).map(([k, v]) => (
-            <span key={k} className="text-sm text-green-700 font-mono">
-              {k} = {formatNum(v)}
+            <span
+              key={k}
+              className="text-sm"
+              style={{ fontFamily: "'JetBrains Mono', monospace" }}
+            >
+              <span style={{ color: 'var(--ij-purple)' }}>{k}</span>
+              <span style={{ color: 'var(--ij-text-secondary)' }}>{' = '}</span>
+              <span style={{ color: 'var(--ij-green)' }}>{formatNum(v)}</span>
             </span>
           ))}
         </div>
@@ -33,10 +49,21 @@ export function ResultBanner({ resultado }: Props) {
     ERROR: 'El solver encontró un error interno al procesar el modelo.',
   }
 
+  const isNoAcotado = resultado.status === 'NO_ACOTADO'
+  const accentColor = isNoAcotado ? 'var(--ij-amber)' : 'var(--ij-red)'
+  const bgColor = isNoAcotado ? 'rgba(255,200,89,0.08)' : 'rgba(255,82,99,0.08)'
+
   return (
-    <div className="rounded-lg border border-red-200 bg-red-50 p-4">
-      <p className="font-semibold text-red-800 text-sm">{resultado.status}</p>
-      <p className="mt-1 text-sm text-red-700">{msgs[resultado.status] ?? 'Estado desconocido'}</p>
+    <div
+      className="rounded-[4px] p-4"
+      style={{ background: bgColor, borderLeft: `2px solid ${accentColor}` }}
+    >
+      <p className="font-semibold text-sm" style={{ color: accentColor }}>
+        {resultado.status}
+      </p>
+      <p className="mt-1 text-sm" style={{ color: accentColor, opacity: 0.85 }}>
+        {msgs[resultado.status] ?? 'Estado desconocido'}
+      </p>
     </div>
   )
 }

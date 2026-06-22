@@ -4,21 +4,26 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[4px] text-[13px] font-medium transition-colors duration-[120ms] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ij-blue)] focus-visible:ring-offset-1 disabled:pointer-events-none disabled:opacity-50',
   {
     variants: {
       variant: {
-        default: 'bg-blue-600 text-white hover:bg-blue-700',
-        secondary: 'bg-slate-100 text-slate-900 hover:bg-slate-200',
-        outline: 'border border-slate-200 bg-white hover:bg-slate-50 hover:text-slate-900',
-        ghost: 'hover:bg-slate-100 hover:text-slate-900',
-        destructive: 'bg-red-500 text-white hover:bg-red-600',
+        default:
+          'bg-[rgba(118,174,255,0.1)] text-[var(--ij-blue)] border border-[var(--ij-blue)] hover:bg-[rgba(118,174,255,0.18)]',
+        secondary:
+          'bg-[var(--ij-bg-selection)] text-[var(--ij-text-primary)] hover:bg-[var(--ij-bg-active)]',
+        outline:
+          'border border-[var(--ij-border)] bg-transparent text-[var(--ij-text-primary)] hover:bg-[var(--ij-bg-hover)]',
+        ghost:
+          'hover:bg-[var(--ij-bg-hover)] text-[var(--ij-text-secondary)] hover:text-[var(--ij-text-primary)]',
+        destructive:
+          'bg-[var(--ij-red)] text-white hover:opacity-90',
       },
       size: {
         default: 'h-9 px-4 py-2',
-        sm: 'h-8 rounded-md px-3 text-xs',
-        lg: 'h-10 rounded-md px-8',
-        icon: 'h-9 w-9',
+        sm:      'h-8 rounded-[4px] px-3 text-xs',
+        lg:      'h-10 rounded-[4px] px-8',
+        icon:    'h-9 w-9',
       },
     },
     defaultVariants: {
