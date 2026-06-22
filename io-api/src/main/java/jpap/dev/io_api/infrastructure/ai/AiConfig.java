@@ -2,6 +2,7 @@ package jpap.dev.io_api.infrastructure.ai;
 
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.chat.ChatModel;
+import dev.langchain4j.rag.content.retriever.ContentRetriever;
 import dev.langchain4j.service.AiServices;
 import jpap.dev.io_api.infrastructure.ai.tools.SimplexTool;
 import jpap.dev.io_api.infrastructure.ai.tools.SugerirModeloTool;
@@ -33,7 +34,8 @@ public class AiConfig {
     public TutorAiService tutorAiService(ChatModel chatModel,
                                          SimplexTool simplexTool,
                                          SugerirModeloTool sugerirTool,
-                                         ValidarModeloTool validarTool)
+                                         ValidarModeloTool validarTool,
+                                         ContentRetriever contentRetriever)
             throws IOException {
         String systemPrompt = cargarPrompt("classpath:prompts/tutor_system_prompt.txt");
         return AiServices.builder(TutorAiService.class)
@@ -41,6 +43,7 @@ public class AiConfig {
                 .chatMemoryProvider(memId -> MessageWindowChatMemory.withMaxMessages(30))
                 .tools(simplexTool, sugerirTool, validarTool)
                 .systemMessageProvider(memId -> systemPrompt)
+                .contentRetriever(contentRetriever)
                 .build();
     }
 

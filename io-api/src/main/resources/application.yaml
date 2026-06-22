@@ -49,6 +49,8 @@ langchain4j:
 # ── Configuración propia de la app ─────────────────────────────────────────────
 app:
   chroma-url: ${CHROMA_URL:http://localhost:8000}
+  rag:
+    reingestar: ${RAG_REINGESTAR:false}
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 logging:

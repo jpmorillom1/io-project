@@ -39,7 +39,10 @@ dependencies {
 	// LangChain4j — chat model OpenAI-compatible (se apunta a Groq)
 	implementation 'dev.langchain4j:langchain4j-open-ai-spring-boot4-starter:1.13.0-beta23'
 	// LangChain4j — vector store ChromaDB
-	implementation 'dev.langchain4j:langchain4j-chroma:1.13.0-beta23'
+	// Excluye el cliente JDK para evitar conflicto con el Spring RestClient del starter
+	implementation('dev.langchain4j:langchain4j-chroma:1.13.0-beta23') {
+		exclude group: 'dev.langchain4j', module: 'langchain4j-http-client-jdk'
+	}
 	// LangChain4j — modelo de embeddings local (sin API key, para RAG en dev)
 	implementation 'dev.langchain4j:langchain4j-embeddings-all-minilm-l6-v2-q:1.13.0-beta23'
 }
