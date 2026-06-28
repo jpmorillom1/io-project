@@ -4,6 +4,7 @@ import { useWorkspaceStore } from '@/store/useWorkspaceStore'
 import { Button } from '@/components/ui/button'
 import { ValidationFeedback } from './ValidationFeedback'
 import { Trash2, Plus, Loader2, BotMessageSquare } from 'lucide-react'
+import { ShaderGlow } from '@/components/ui/ShaderGlow'
 import type { TipoObjetivo, TipoRestriccion } from '@/types/io'
 
 const MONO: CSSProperties = { fontFamily: "'JetBrains Mono', monospace", fontSize: '13px' }
@@ -51,31 +52,21 @@ export function ModelEditor() {
   return (
     <div className="space-y-4">
       {ultimaActualizacionIA && !isChatBusy && (
-        <div
-          className="flex items-center gap-1.5 rounded-[4px] px-3 py-1.5 text-xs"
-          style={{ ...MONO, color: 'var(--ij-teal)', background: 'rgba(20,196,182,0.08)' }}
-        >
+        <ShaderGlow target="banner" state="done">
           <BotMessageSquare className="h-3.5 w-3.5 shrink-0" />
           <span>
             {ultimaActualizacionIA === 'modelo' && 'Ío completó el formulario con el modelo sugerido ✓'}
             {ultimaActualizacionIA === 'validacion' && 'Ío validó el modelo ✓'}
             {ultimaActualizacionIA === 'resultado' && 'Ío resolvió el problema — revisa el tableau ✓'}
           </span>
-        </div>
+        </ShaderGlow>
       )}
 
       {isChatBusy && (
-        <div
-          className="flex items-center gap-2 text-xs rounded-[4px] px-3 py-1.5"
-          style={{
-            color: 'var(--ij-text-secondary)',
-            background: 'var(--ij-bg-hover)',
-            border: '1px solid var(--ij-border)',
-          }}
-        >
-          <Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: 'var(--ij-teal)' }} />
+        <ShaderGlow target="banner" state="processing">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
           Ío está respondiendo — el formulario se actualizará automáticamente
-        </div>
+        </ShaderGlow>
       )}
 
       <div>

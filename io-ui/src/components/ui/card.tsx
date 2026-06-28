@@ -6,7 +6,7 @@ const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElemen
     <div
       ref={ref}
       className={cn('rounded-[10px]', className)}
-      style={{ background: 'var(--ij-bg-editor)', ...style }}
+      style={{ background: 'var(--ij-bg-editor)', boxShadow: '0 0 0 1px var(--ij-bg-editor)', ...style }}
       {...props}
     />
   )

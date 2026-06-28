@@ -2,7 +2,8 @@ import { useRef, useEffect, useState } from 'react'
 import { useChat } from '@/hooks'
 import { ChatBubble } from './ChatBubble'
 import { Button } from '@/components/ui/button'
-import { Loader2, Send, Bot } from 'lucide-react'
+import { Loader2, Send } from 'lucide-react'
+import { ShaderGlow } from '@/components/ui/ShaderGlow'
 
 const PROMPTS_EJEMPLO = [
   'Quiero maximizar la ganancia produciendo dos productos con restricciones de recursos...',
@@ -38,12 +39,7 @@ export function ChatPanel() {
       {/* Header */}
       <div className="px-4 py-3" style={{ background: 'var(--ij-bg-editor)', borderBottom: '1px solid var(--ij-bg-secondary)' }}>
         <div className="flex items-center gap-2.5">
-          <div
-            className="h-8 w-8 rounded-[4px] flex items-center justify-center shrink-0"
-            style={{ background: 'rgba(20,196,182,0.15)' }}
-          >
-            <Bot className="h-4 w-4" style={{ color: 'var(--ij-teal)' }} />
-          </div>
+          <ShaderGlow target="circle" className="shrink-0 h-8 w-8" />
           <div>
             <p
               className="text-sm font-semibold leading-tight"
@@ -101,18 +97,10 @@ export function ChatPanel() {
 
         {isSending && (
           <div className="flex justify-start">
-            <div
-              className="rounded-[4px] px-3 py-2 flex items-center gap-1.5"
-              style={{ background: 'var(--ij-bg-hover)' }}
-            >
-              <Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: 'var(--ij-teal)' }} />
-              <span
-                className="text-xs"
-                style={{ fontFamily: "'JetBrains Mono', monospace", color: 'var(--ij-teal)' }}
-              >
-                Ío está escribiendo…
-              </span>
-            </div>
+            <ShaderGlow target="pill">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: '#fff' }} />
+              Ío está escribiendo…
+            </ShaderGlow>
           </div>
         )}
 
