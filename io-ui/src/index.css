@@ -72,3 +72,116 @@
     border-radius: 3px;
   }
 }
+
+/* Markdown en burbujas del chat del agente */
+.chat-md {
+  line-height: 1.6;
+}
+
+.chat-md p {
+  margin: 0 0 0.5em;
+}
+.chat-md p:last-child {
+  margin-bottom: 0;
+}
+
+.chat-md ul,
+.chat-md ol {
+  margin: 0.4em 0 0.5em 1.2em;
+  padding: 0;
+}
+.chat-md li {
+  margin-bottom: 0.2em;
+}
+
+.chat-md strong {
+  color: var(--ij-text-primary);
+  font-weight: 600;
+}
+
+.chat-md em {
+  color: var(--ij-text-muted);
+  font-style: italic;
+}
+
+.chat-md code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.85em;
+  background: var(--ij-bg-secondary);
+  color: var(--ij-cyan);
+  border-radius: 3px;
+  padding: 0.1em 0.35em;
+}
+
+.chat-md pre {
+  background: var(--ij-bg-secondary);
+  border: 1px solid var(--ij-border);
+  border-radius: 4px;
+  padding: 0.6em 0.8em;
+  overflow-x: auto;
+  margin: 0.5em 0;
+}
+.chat-md pre code {
+  background: none;
+  padding: 0;
+  color: var(--ij-text-primary);
+  font-size: 0.82em;
+}
+
+.chat-md blockquote {
+  border-left: 3px solid var(--ij-blue);
+  margin: 0.4em 0;
+  padding: 0.2em 0.75em;
+  color: var(--ij-text-muted);
+  font-style: italic;
+}
+
+.chat-md h1,
+.chat-md h2,
+.chat-md h3 {
+  color: var(--ij-teal);
+  font-weight: 600;
+  margin: 0.6em 0 0.3em;
+  line-height: 1.3;
+}
+.chat-md h1 { font-size: 1.05em; }
+.chat-md h2 { font-size: 1em; }
+.chat-md h3 { font-size: 0.95em; }
+
+.chat-md table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.88em;
+  margin: 0.5em 0;
+}
+.chat-md th,
+.chat-md td {
+  border: 1px solid var(--ij-border);
+  padding: 0.3em 0.6em;
+  text-align: left;
+}
+.chat-md th {
+  background: var(--ij-bg-secondary);
+  color: var(--ij-text-primary);
+  font-weight: 600;
+}
+.chat-md tr:nth-child(even) td {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.chat-md a {
+  color: var(--ij-link);
+  text-decoration: underline;
+}
+
+.chat-md hr {
+  border: none;
+  border-top: 1px solid var(--ij-border);
+  margin: 0.6em 0;
+}
+
+/* KaTeX: hereda el color del tema */
+.chat-md .katex {
+  color: var(--ij-text-primary);
+  font-size: 1em;
+}
