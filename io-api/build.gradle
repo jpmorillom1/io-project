@@ -45,6 +45,8 @@ dependencies {
 	}
 	// LangChain4j — modelo de embeddings local (sin API key, para RAG en dev)
 	implementation 'dev.langchain4j:langchain4j-embeddings-all-minilm-l6-v2-q:1.13.0-beta23'
+	// LangChain4j — parser PDF via Apache PDFBox
+	implementation 'dev.langchain4j:langchain4j-document-parser-apache-pdfbox:1.13.0-beta23'
 }
 
 // Expone nombres de parámetros en bytecode → Jackson puede deserializar records sin @JsonProperty

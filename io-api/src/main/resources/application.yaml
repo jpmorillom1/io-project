@@ -50,7 +50,8 @@ langchain4j:
 app:
   chroma-url: ${CHROMA_URL:http://localhost:8000}
   rag:
-    reingestar: ${RAG_REINGESTAR:false}
+    reingestar: ${RAG_REINGESTAR:true}
+    incluir-pdf: ${RAG_INCLUIR_PDF:true}
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 logging:
