@@ -4,7 +4,9 @@ import jpap.dev.io_api.domain.common.SolveResult;
 import jpap.dev.io_api.domain.common.SolveStatus;
 import jpap.dev.io_api.domain.common.SolveStep;
 import jpap.dev.io_api.domain.lp.ModeloLP;
+import jpap.dev.io_api.domain.lp.RangosSensibilidad;
 import jpap.dev.io_api.domain.lp.Restriccion;
+import jpap.dev.io_api.domain.lp.SensibilidadCalculator;
 import jpap.dev.io_api.domain.lp.SolucionLP;
 import jpap.dev.io_api.domain.lp.TipoObjetivo;
 import jpap.dev.io_api.domain.lp.TipoRestriccion;
@@ -182,7 +184,7 @@ public class DosFasesSolver {
                     Map.of("varEntra", entering, "varSale", leaving)));
         }
 
-        return buildResult(t, base, headers, modelo, n, nSlack, cols, isMin, pasos, stepNum);
+        return buildResult(t, base, headers, modelo, n, m, nSlack, cols, isMin, pasos, stepNum, slackCol, artCol);
     }
 
     // ─────────────────────── construcción del tableau ───────────────────────
@@ -268,20 +270,25 @@ public class DosFasesSolver {
     // ─────────────────────── resultado final ────────────────────────────────
 
     private SolveResult<SolucionLP> buildResult(double[][] t, int[] base, List<String> headers,
-                                                 ModeloLP modelo, int n, int nSlack, int cols,
-                                                 boolean isMin, List<SolveStep> pasos, int stepNum) {
+                                                 ModeloLP modelo, int n, int m, int nSlack, int cols,
+                                                 boolean isMin, List<SolveStep> pasos, int stepNum,
+                                                 int[] slackCol, int[] artCol) {
         double[] solArr = new double[headers.size()];
-        for (int i = 0; i < base.length; i++) solArr[base[i]] = t[i][cols - 1];
+        for (int i = 0; i < m; i++) solArr[base[i]] = t[i][cols - 1];
 
         Map<String, Double> valores = new LinkedHashMap<>();
         for (int j = 0; j < n; j++) {
             valores.put(modelo.variables().get(j), round(solArr[j]));
         }
 
-        double zOpt = t[base.length][cols - 1];
+        Map<String, Double> holguras       = SensibilidadCalculator.calcularHolguras(solArr, m, slackCol);
+        Map<String, Double> preciosSombra  = SensibilidadCalculator.calcularPreciosSombra(t, base, modelo, n, m, slackCol, artCol);
+        RangosSensibilidad  rangos         = SensibilidadCalculator.calcularRangos(t, base, modelo, n, m, cols, n + nSlack, slackCol, artCol, isMin);
+
+        double zOpt = t[m][cols - 1];
         if (isMin) zOpt = -zOpt;
 
-        SolveStatus status = hasMultipleOptima(t, base, base.length, n, nSlack)
+        SolveStatus status = hasMultipleOptima(t, base, m, n, nSlack)
                 ? SolveStatus.MULTIPLE_OPTIMO
                 : SolveStatus.OPTIMO;
 
@@ -292,7 +299,7 @@ public class DosFasesSolver {
                 t, base, headers,
                 Map.of("valorOptimo", zFinal, "status", status.name())));
 
-        return new SolveResult<>(status, new SolucionLP(valores, zFinal), pasos);
+        return new SolveResult<>(status, new SolucionLP(valores, holguras, zFinal, preciosSombra, rangos), pasos);
     }
 
     private boolean hasMultipleOptima(double[][] t, int[] base, int m, int n, int nSlack) {

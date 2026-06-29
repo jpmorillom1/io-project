@@ -4,6 +4,8 @@ import jpap.dev.io_api.domain.common.SolveResult;
 import jpap.dev.io_api.domain.common.SolveStatus;
 import jpap.dev.io_api.domain.lp.FuncionObjetivo;
 import jpap.dev.io_api.domain.lp.ModeloLP;
+import jpap.dev.io_api.domain.lp.RangoCoeficiente;
+import jpap.dev.io_api.domain.lp.RangoRHS;
 import jpap.dev.io_api.domain.lp.Restriccion;
 import jpap.dev.io_api.domain.lp.SolucionLP;
 import jpap.dev.io_api.domain.lp.TipoObjetivo;
@@ -117,6 +119,78 @@ class SimplexSolverTest {
                 List.of(new Restriccion(List.of(1.0), TipoRestriccion.GEQ, 5.0))
         );
         assertThrows(IllegalArgumentException.class, () -> solver.resolver(modelo));
+    }
+
+    @Test
+    void holguras_precios_sombra_y_rangos_sensibilidad() {
+        // MAX 5x1+4x2, 6x1+4x2<=24, x1+2x2<=6 — ambas restricciones activas en el óptimo
+        ModeloLP modelo = new ModeloLP(
+                List.of("x1", "x2"),
+                new FuncionObjetivo(List.of(5.0, 4.0), TipoObjetivo.MAXIMIZAR),
+                List.of(
+                        new Restriccion(List.of(6.0, 4.0), TipoRestriccion.LEQ, 24.0),
+                        new Restriccion(List.of(1.0, 2.0), TipoRestriccion.LEQ, 6.0)
+                )
+        );
+
+        SolucionLP sol = solver.resolver(modelo).solution();
+
+        // holguras — ambas en 0 (restricciones activas)
+        assertNotNull(sol.holguras());
+        assertEquals(0.0, sol.holguras().get("s1"), DELTA);
+        assertEquals(0.0, sol.holguras().get("s2"), DELTA);
+
+        // precios sombra — y = c_B^T * B^{-1}
+        assertNotNull(sol.preciosSombra());
+        assertEquals(0.75, sol.preciosSombra().get("R1"), DELTA);
+        assertEquals(0.50, sol.preciosSombra().get("R2"), DELTA);
+
+        // rangos del objetivo
+        assertNotNull(sol.rangosSensibilidad());
+        RangoCoeficiente rx1 = sol.rangosSensibilidad().coeficientesObjetivo().get(0);
+        RangoCoeficiente rx2 = sol.rangosSensibilidad().coeficientesObjetivo().get(1);
+
+        assertEquals("x1", rx1.variable());
+        assertEquals(4.0,  rx1.min(), DELTA);
+        assertEquals(8.0,  rx1.max(), DELTA);
+
+        assertEquals("x2", rx2.variable());
+        assertEquals(-2.0,       rx2.min(), DELTA);
+        assertEquals(4.666667,   rx2.max(), DELTA);
+
+        // rangos del RHS
+        RangoRHS r1 = sol.rangosSensibilidad().rhs().get(0);
+        RangoRHS r2 = sol.rangosSensibilidad().rhs().get(1);
+
+        assertEquals("R1", r1.restriccion());
+        assertEquals(12.0, r1.min(), DELTA);
+        assertEquals(36.0, r1.max(), DELTA);
+
+        assertEquals("R2", r2.restriccion());
+        assertEquals(4.0,  r2.min(), DELTA);
+        assertEquals(12.0, r2.max(), DELTA);
+    }
+
+    @Test
+    void holguras_no_nulas_cuando_restriccion_no_activa() {
+        // MAX 3x1+5x2, x1<=4, 2x2<=12, 3x1+5x2<=25 — x1<=4 no estará activa en el óptimo
+        ModeloLP modelo = new ModeloLP(
+                List.of("x1", "x2"),
+                new FuncionObjetivo(List.of(3.0, 5.0), TipoObjetivo.MAXIMIZAR),
+                List.of(
+                        new Restriccion(List.of(1.0, 0.0), TipoRestriccion.LEQ, 4.0),
+                        new Restriccion(List.of(0.0, 2.0), TipoRestriccion.LEQ, 12.0),
+                        new Restriccion(List.of(3.0, 5.0), TipoRestriccion.LEQ, 25.0)
+                )
+        );
+
+        SolucionLP sol = solver.resolver(modelo).solution();
+
+        assertNotNull(sol.holguras());
+        // x2=5, luego 2x2=10 < 12 → s2 > 0
+        assertTrue(sol.holguras().get("s2") > 0.0, "s2 debe ser positiva (restriccion no activa)");
+        // precio sombra de restriccion no activa debe ser 0
+        assertEquals(0.0, sol.preciosSombra().get("R2"), DELTA);
     }
 
     @Test

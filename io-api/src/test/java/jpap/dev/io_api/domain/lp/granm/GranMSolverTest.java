@@ -44,6 +44,15 @@ class GranMSolverTest {
         assertEquals(11.0, resultado.solution().valorOptimo(), DELTA);
         assertEquals(3.0,  resultado.solution().valores().get("x1"), DELTA);
         assertEquals(1.0,  resultado.solution().valores().get("x2"), DELTA);
+
+        // holguras, precios sombra y rangos deben estar presentes
+        assertNotNull(resultado.solution().holguras());
+        assertFalse(resultado.solution().holguras().isEmpty());
+        assertNotNull(resultado.solution().preciosSombra());
+        assertEquals(2, resultado.solution().preciosSombra().size());
+        assertNotNull(resultado.solution().rangosSensibilidad());
+        assertEquals(2, resultado.solution().rangosSensibilidad().coeficientesObjetivo().size());
+        assertEquals(2, resultado.solution().rangosSensibilidad().rhs().size());
     }
 
     /**

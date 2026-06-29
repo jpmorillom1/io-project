@@ -47,11 +47,49 @@ Infactible y no acotado son resultados válidos (HTTP 200), no errores.
 
 ## Módulo LP — Implementado
 
+### Estructura común de `SolucionLP`
+
+Todos los solvers de LP devuelven `SolveResult<SolucionLP>`.
+`SolucionLP` incluye siempre estos campos cuando `status` es `OPTIMO` o `MULTIPLE_OPTIMO`:
+
+```json
+{
+  "valores": { "x1": 3.0, "x2": 1.5 },
+  "holguras": { "s1": 0.0, "s2": 0.0 },
+  "valorOptimo": 21.0,
+  "preciosSombra": {
+    "R1": 0.75,
+    "R2": 0.50
+  },
+  "rangosSensibilidad": {
+    "coeficientesObjetivo": [
+      { "variable": "x1", "valorActual": 5.0, "min": 4.0,  "max": 8.0 },
+      { "variable": "x2", "valorActual": 4.0, "min": -2.0, "max": 4.666667 }
+    ],
+    "rhs": [
+      { "restriccion": "R1", "valorActual": 24.0, "min": 12.0, "max": 36.0 },
+      { "restriccion": "R2", "valorActual": 6.0,  "min": 4.0,  "max": 12.0 }
+    ]
+  }
+}
+```
+
+| Campo | Descripción |
+|---|---|
+| `valores` | Valor óptimo de cada variable de decisión |
+| `holguras` | Valor de cada variable de holgura/superávit en el óptimo (`sᵢ = 0` → restricción activa) |
+| `valorOptimo` | Z* |
+| `preciosSombra` | ∂Z\*/∂bᵢ — cuánto mejora Z si se relaja una unidad la restricción Rᵢ |
+| `rangosSensibilidad.coeficientesObjetivo` | Rango de cada cᵢ donde la base óptima no cambia (`null` = sin límite ±∞) |
+| `rangosSensibilidad.rhs` | Rango de cada bᵢ donde la base óptima sigue siendo factible (`null` = sin límite) |
+
+---
+
 ### `POST /api/v1/lp/simplex`
 
-Resuelve Programación Lineal con el método Simplex estándar.
+Resuelve PL con el método Simplex estándar.
 **Restricción técnica:** solo acepta restricciones `LEQ` (≤) con `rhs >= 0`.
-Para `GEQ` o `EQ` → pendiente Dos Fases / Gran M.
+Para `GEQ` o `EQ` → usar `/lp/gran-m` o `/lp/dos-fases`.
 
 **Request:**
 ```json
@@ -69,19 +107,9 @@ Para `GEQ` o `EQ` → pendiente Dos Fases / Gran M.
 ```
 
 `tipo` del objetivo: `MAXIMIZAR` | `MINIMIZAR`
-`tipo` de restricción: `LEQ` (≤) — únicamente soportado actualmente
+`tipo` de restricción: `LEQ` | `GEQ` | `EQ`
 
-**Response:** `SolveResult<SolucionLP>`
-```json
-{
-  "status": "OPTIMO",
-  "solution": {
-    "valores": { "x1": 3.0, "x2": 1.5 },
-    "valorOptimo": 21.0
-  },
-  "steps": [ ... ]
-}
-```
+**Response:** `SolveResult<SolucionLP>` (ver estructura arriba)
 
 `steps[i].datos` siempre contiene:
 - `encabezados`: lista de nombres de columnas (`variables + holguras + "b"`)
@@ -94,6 +122,28 @@ Para `GEQ` o `EQ` → pendiente Dos Fases / Gran M.
 ```json
 { "error": "Simplex estándar solo admite restricciones <=. Restricción 2 es de tipo GEQ." }
 ```
+
+---
+
+### `POST /api/v1/lp/gran-m`
+
+Resuelve PL con el método Gran M (penalidad). Acepta `LEQ`, `GEQ` y `EQ`.
+
+**Request:** igual que `/lp/simplex` pero `tipo` de restricción puede ser `GEQ` o `EQ`.
+
+**Response:** `SolveResult<SolucionLP>` con los mismos campos. Los pasos incluyen
+las variables artificiales (`a1`, `a2`...) en `encabezados` y `base`.
+
+---
+
+### `POST /api/v1/lp/dos-fases`
+
+Resuelve PL con el método Dos Fases. Acepta `LEQ`, `GEQ` y `EQ`.
+
+**Request:** igual que `/lp/gran-m`.
+
+**Response:** `SolveResult<SolucionLP>`. Los pasos incluyen pasos de Fase 1
+(títulos con `"Fase 1"`) y Fase 2 (títulos con `"Fase 2"`), con numeración continua.
 
 ---
 
@@ -166,7 +216,22 @@ lee y actualiza el formulario y/o tableau automáticamente.
   },
   "resultado": {
     "status": "OPTIMO",
-    "solution": { "valores": { "x1": 3.0, "x2": 1.5 }, "valorOptimo": 21.0 },
+    "solution": {
+      "valores": { "x1": 3.0, "x2": 1.5 },
+      "holguras": { "s1": 0.0, "s2": 0.0 },
+      "valorOptimo": 21.0,
+      "preciosSombra": { "R1": 0.75, "R2": 0.5 },
+      "rangosSensibilidad": {
+        "coeficientesObjetivo": [
+          { "variable": "x1", "valorActual": 5.0, "min": 4.0, "max": 8.0 },
+          { "variable": "x2", "valorActual": 4.0, "min": -2.0, "max": 4.666667 }
+        ],
+        "rhs": [
+          { "restriccion": "R1", "valorActual": 24.0, "min": 12.0, "max": 36.0 },
+          { "restriccion": "R2", "valorActual": 6.0,  "min": 4.0,  "max": 12.0 }
+        ]
+      }
+    },
     "steps": [ ... ]
   }
 }
@@ -264,10 +329,7 @@ Detecta coeficientes incorrectos, restricciones faltantes, tipo de optimización
 ## Módulos pendientes (devuelven 404 por ahora)
 
 ```
-POST /api/v1/lp/dos-fases     → pendiente (restricciones >= y =)
-POST /api/v1/lp/gran-m        → pendiente
 POST /api/v1/lp/dual          → pendiente
-POST /api/v1/lp/sensibilidad  → pendiente
 POST /api/v1/lp/grafico       → pendiente (solo 2 variables)
 
 POST /api/v1/transporte/resolver   → pendiente

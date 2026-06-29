@@ -19,9 +19,31 @@ export interface ModeloLP {
   restricciones: Restriccion[]
 }
 
+export interface RangoCoeficiente {
+  variable: string
+  valorActual: number
+  min: number | null   // null = -∞
+  max: number | null   // null = +∞
+}
+
+export interface RangoRHS {
+  restriccion: string
+  valorActual: number
+  min: number | null   // null = -∞
+  max: number | null   // null = +∞
+}
+
+export interface RangosSensibilidad {
+  coeficientesObjetivo: RangoCoeficiente[]
+  rhs: RangoRHS[]
+}
+
 export interface SolucionLP {
   valores: Record<string, number>
+  holguras: Record<string, number>
   valorOptimo: number
+  preciosSombra: Record<string, number>
+  rangosSensibilidad: RangosSensibilidad
 }
 
 export interface StepDatos {

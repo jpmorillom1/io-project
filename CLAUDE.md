@@ -18,7 +18,7 @@ un panel de configuración, y el sistema lo resuelve mostrando el **procedimient
 
 | Módulo | Estado | Algoritmos |
 |---|---|---|
-| Programación Lineal (LP) | **Simplex estándar IMPLEMENTADO** | Simplex estándar (≤, b≥0); Dos Fases, Gran M, Dual, Sensibilidad, Gráfico — pendientes |
+| Programación Lineal (LP) | **Simplex, Gran M, Dos Fases IMPLEMENTADOS** | Simplex (≤); Gran M, Dos Fases (≤/≥/=); análisis post-óptimo incluido. Dual, Gráfico — pendientes |
 | Transporte | TODO estructurado | Esquina Noroeste, Costo Mínimo, Vogel (VAM); MODI; Húngaro (asignación) |
 | Redes | TODO estructurado | Dijkstra, Kruskal (+Union-Find), Edmonds-Karp |
 | PL Entera | TODO estructurado | Branch & Bound sobre Simplex; Gomory (opcional) |
@@ -108,29 +108,36 @@ válidos. Las excepciones se reservan para entradas malformadas.
 - `SolveResult<T>`, `SolveStep`, `SolveStatus` — contrato común de todos los solvers
 
 ### domain/lp/
-- `ModeloLP`, `FuncionObjetivo`, `Restriccion`, `SolucionLP` — records inmutables
+- `ModeloLP`, `FuncionObjetivo`, `Restriccion` — records de entrada inmutables
 - `TipoObjetivo` (MAXIMIZAR/MINIMIZAR), `TipoRestriccion` (LEQ/GEQ/EQ)
-- `simplex/SimplexSolver` — Simplex estándar completo con registro de pasos por iteración
-
-**Limitación del SimplexSolver:** solo acepta restricciones `LEQ` con `rhs >= 0`.
-Para `GEQ` o `EQ` → Dos Fases o Gran M (pendientes).
+- `SolucionLP` — record de salida: `valores`, `holguras`, `valorOptimo`, `preciosSombra`, `rangosSensibilidad`
+- `RangosSensibilidad`, `RangoCoeficiente`, `RangoRHS` — records del análisis post-óptimo
+- `SensibilidadCalculator` — utilidad estática compartida por los tres solvers
+- `simplex/SimplexSolver` — Simplex estándar (solo LEQ, b≥0)
+- `granm/GranMSolver` — Gran M: LEQ/GEQ/EQ con penalidad M=1.000.000
+- `dosfases/DosFasesSolver` — Dos Fases: LEQ/GEQ/EQ
 
 ### application/lp/
-- `SimplexUseCase` (interfaz/puerto)
-- `SimplexService` (@Service que delega a `SimplexSolver`)
+- `SimplexUseCase` / `SimplexService`
+- `GranMUseCase` / `GranMService`
+- `DosFasesUseCase` / `DosFasesService`
 
 ### infrastructure/lp/
 - `SimplexController` — `POST /api/v1/lp/simplex`
+- `GranMController` — `POST /api/v1/lp/gran-m`
+- `DosFasesController` — `POST /api/v1/lp/dos-fases`
 
 ### infrastructure/ai/
 - `TutorAiService` — interfaz conversacional, memoria en RAM por sesión (30 mensajes)
 - `ModeloAiService` — interfaz con structured output: `extraerModelo()` y `validarModelo()`
-- `AiConfig` — beans manuales via `AiServices.builder()`; registra las 3 tools
+- `AiConfig` — beans manuales via `AiServices.builder()`; registra las 5 tools
 - `ChatContextStore` — ThreadLocal que las tools usan para escribir datos estructurados;
   el controlador los lee al terminar el chat y los incluye en `ChatResponse`
-- `tools/SimplexTool` — `@Tool resolverSimplex(...)` — escribe `SolveResult` en el store
-- `tools/SugerirModeloTool` — `@Tool registrarModeloSugerido(...)` — escribe `ModeloLP`
-- `tools/ValidarModeloTool` — `@Tool registrarValidacion(...)` — escribe `ValidacionResponse`
+- `tools/SimplexTool` — `@Tool resolverSimplex(...)` — solo LEQ
+- `tools/GranMTool` — `@Tool resolverGranM(...)` — LEQ/GEQ/EQ
+- `tools/DosFasesTool` — `@Tool resolverDosFases(...)` — LEQ/GEQ/EQ (método por defecto)
+- `tools/SugerirModeloTool` — `@Tool registrarModeloSugerido(...)`
+- `tools/ValidarModeloTool` — `@Tool registrarValidacion(...)`
 - `AiChatController` — tres endpoints AI; `/chat` inicializa el store, llama al tutor
   y devuelve `ChatResponse` enriquecido con los datos que las tools escribieron
 - `dto/` — ChatRequest, ChatResponse (enriquecido: respuesta + 3 campos nullables),
@@ -145,7 +152,9 @@ Para `GEQ` o `EQ` → Dos Fases o Gran M (pendientes).
 - `db/migration/V1__init.sql` — tablas: sesion, problema_resuelto, interaccion_ia
 
 ### test/
-- `SimplexSolverTest` — 5 tests de dominio sin Spring: MAX, MIN, no-acotado, validación, pasos
+- `SimplexSolverTest` — 7 tests de dominio sin Spring (incluye holguras, precios sombra, rangos)
+- `GranMSolverTest` — 5 tests: LEQ+GEQ, todo-GEQ, EQ, infactible, pasos
+- `DosFasesSolverTest` — 5 tests: LEQ+GEQ, todo-GEQ, EQ, infactible, fases en orden
 
 ---
 
@@ -153,10 +162,14 @@ Para `GEQ` o `EQ` → Dos Fases o Gran M (pendientes).
 
 | Método | URL | Función |
 |---|---|---|
-| POST | `/api/v1/lp/simplex` | Resuelve Simplex estándar, devuelve pasos completos |
+| POST | `/api/v1/lp/simplex` | Simplex estándar (solo ≤); devuelve pasos + análisis post-óptimo |
+| POST | `/api/v1/lp/gran-m` | Gran M (≤/≥/=); devuelve pasos + análisis post-óptimo |
+| POST | `/api/v1/lp/dos-fases` | Dos Fases (≤/≥/=); devuelve pasos + análisis post-óptimo |
 | POST | `/api/v1/ai/chat` | Chat socrático con memoria de sesión |
 | POST | `/api/v1/ai/sugerir-modelo` | Extrae `ModeloLP` desde lenguaje natural |
 | POST | `/api/v1/ai/validar-modelo` | Valida modelo del estudiante contra enunciado |
+
+Los tres solvers LP incluyen en `solution`: `valores`, `holguras`, `preciosSombra` y `rangosSensibilidad`.
 
 Ver `docs/API_CONTRACT.md` para los cuerpos de request/response completos.
 

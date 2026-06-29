@@ -10,7 +10,9 @@
 
 | Método | URL | Para qué |
 |--------|-----|----------|
-| POST | `/api/v1/lp/simplex` | Resolver PL directamente (sin IA) |
+| POST | `/api/v1/lp/simplex` | Resolver PL — Simplex estándar (solo ≤) |
+| POST | `/api/v1/lp/gran-m` | Resolver PL — Gran M (≤, ≥, =) |
+| POST | `/api/v1/lp/dos-fases` | Resolver PL — Dos Fases (≤, ≥, =) |
 | POST | `/api/v1/ai/chat` | Chat socrático con el tutor Ío |
 | POST | `/api/v1/ai/sugerir-modelo` | Extraer un `ModeloLP` desde texto libre |
 | POST | `/api/v1/ai/validar-modelo` | Validar el modelo del estudiante |
@@ -56,11 +58,20 @@ Content-Type: application/json
 {
   "status": "OPTIMO",
   "solution": {
-    "valores": {
-      "x1": 3.0,
-      "x2": 1.5
-    },
-    "valorOptimo": 21.0
+    "valores": { "x1": 3.0, "x2": 1.5 },
+    "holguras": { "s1": 0.0, "s2": 0.0 },
+    "valorOptimo": 21.0,
+    "preciosSombra": { "R1": 0.75, "R2": 0.5 },
+    "rangosSensibilidad": {
+      "coeficientesObjetivo": [
+        { "variable": "x1", "valorActual": 5.0, "min": 4.0,  "max": 8.0 },
+        { "variable": "x2", "valorActual": 4.0, "min": -2.0, "max": 4.666667 }
+      ],
+      "rhs": [
+        { "restriccion": "R1", "valorActual": 24.0, "min": 12.0, "max": 36.0 },
+        { "restriccion": "R2", "valorActual": 6.0,  "min": 4.0,  "max": 12.0 }
+      ]
+    }
   },
   "steps": [
     {
@@ -223,7 +234,22 @@ Los tres últimos campos son **nullable**. Verifica siempre antes de usar:
   },
   "resultado": {
     "status": "OPTIMO",
-    "solution": { "valores": { "x1": 3.0, "x2": 1.5 }, "valorOptimo": 21.0 },
+    "solution": {
+      "valores": { "x1": 3.0, "x2": 1.5 },
+      "holguras": { "s1": 0.0, "s2": 0.0 },
+      "valorOptimo": 21.0,
+      "preciosSombra": { "R1": 0.75, "R2": 0.5 },
+      "rangosSensibilidad": {
+        "coeficientesObjetivo": [
+          { "variable": "x1", "valorActual": 5.0, "min": 4.0,  "max": 8.0 },
+          { "variable": "x2", "valorActual": 4.0, "min": -2.0, "max": 4.666667 }
+        ],
+        "rhs": [
+          { "restriccion": "R1", "valorActual": 24.0, "min": 12.0, "max": 36.0 },
+          { "restriccion": "R2", "valorActual": 6.0,  "min": 4.0,  "max": 12.0 }
+        ]
+      }
+    },
     "steps": [ ... ]
   }
 }
@@ -441,9 +467,31 @@ interface ModeloLP {
 }
 
 // Respuesta del solver
+interface RangoCoeficiente {
+  variable: string
+  valorActual: number
+  min: number | null   // null = -∞
+  max: number | null   // null = +∞
+}
+
+interface RangoRHS {
+  restriccion: string  // "R1", "R2", ...
+  valorActual: number
+  min: number | null   // null = -∞
+  max: number | null   // null = +∞
+}
+
+interface RangosSensibilidad {
+  coeficientesObjetivo: RangoCoeficiente[]
+  rhs: RangoRHS[]
+}
+
 interface SolucionLP {
-  valores: Record<string, number>
+  valores: Record<string, number>       // x1, x2, ...
+  holguras: Record<string, number>      // s1, s2, ... (0 = restricción activa)
   valorOptimo: number
+  preciosSombra: Record<string, number> // R1, R2, ... (∂Z*/∂bᵢ)
+  rangosSensibilidad: RangosSensibilidad
 }
 
 interface StepDatos {

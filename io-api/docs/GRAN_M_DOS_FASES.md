@@ -115,7 +115,22 @@ cada restricción puede ser `"LEQ"`, `"GEQ"` o `"EQ"`.
 ```json
 {
   "status": "OPTIMO",
-  "solution": { "valores": { "x1": 3.0, "x2": 1.0 }, "valorOptimo": 11.0 },
+  "solution": {
+    "valores": { "x1": 3.0, "x2": 1.0 },
+    "holguras": { "s1": 0.0 },
+    "valorOptimo": 11.0,
+    "preciosSombra": { "R1": 1.0, "R2": 2.0 },
+    "rangosSensibilidad": {
+      "coeficientesObjetivo": [
+        { "variable": "x1", "valorActual": 3.0, "min": 0.666667, "max": null },
+        { "variable": "x2", "valorActual": 2.0, "min": null,     "max": 9.0  }
+      ],
+      "rhs": [
+        { "restriccion": "R1", "valorActual": 4.0, "min": 3.0, "max": 6.0 },
+        { "restriccion": "R2", "valorActual": 6.0, "min": 4.0, "max": 8.0 }
+      ]
+    }
+  },
   "steps": [
     { "numero": 0, "titulo": "Tableau inicial (Gran M)", "datos": { "encabezados": [...], "tableau": [...], "base": [...] } },
     { "numero": 1, "titulo": "Iteración 1: entra x2, sale a1", "datos": { "varEntra": "x2", "varSale": "a1", ... } },
@@ -238,3 +253,6 @@ curl -X POST http://localhost:8080/api/v1/lp/dos-fases \
   es crítico — sin él la fila-z queda inconsistente con la base actual.
 - **Sin cambios en DTOs ni frontend**: `ChatContextStore.DatosRespuesta.resultado` y
   `ChatResponse.resultado` ya eran `SolveResult<SolucionLP>`, compatible con los nuevos solvers.
+- **Análisis post-óptimo**: los tres solvers usan `SensibilidadCalculator` para extraer
+  holguras, precios sombra y rangos de sensibilidad. Para GEQ/EQ, la columna `B⁻¹·eᵢ`
+  se toma del artificial (`artCol[i]`), no del superávit, porque el artificial inicia la base con +1.

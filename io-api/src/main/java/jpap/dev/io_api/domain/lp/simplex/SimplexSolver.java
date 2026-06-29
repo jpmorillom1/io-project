@@ -4,7 +4,9 @@ import jpap.dev.io_api.domain.common.SolveResult;
 import jpap.dev.io_api.domain.common.SolveStatus;
 import jpap.dev.io_api.domain.common.SolveStep;
 import jpap.dev.io_api.domain.lp.ModeloLP;
+import jpap.dev.io_api.domain.lp.RangosSensibilidad;
 import jpap.dev.io_api.domain.lp.Restriccion;
+import jpap.dev.io_api.domain.lp.SensibilidadCalculator;
 import jpap.dev.io_api.domain.lp.SolucionLP;
 import jpap.dev.io_api.domain.lp.TipoObjetivo;
 import jpap.dev.io_api.domain.lp.TipoRestriccion;
@@ -160,8 +162,16 @@ public class SimplexSolver {
             valores.put(modelo.variables().get(j), round(solArr[j]));
         }
 
+        // slackCol[i] = n + i para SimplexSolver (todas LEQ, holguras secuenciales)
+        int[] slackCol = new int[m];
+        for (int i = 0; i < m; i++) slackCol[i] = n + i;
+
+        Map<String, Double> holguras       = SensibilidadCalculator.calcularHolguras(solArr, m, slackCol);
+        Map<String, Double> preciosSombra  = SensibilidadCalculator.calcularPreciosSombra(t, base, modelo, n, m, slackCol, null);
+        RangosSensibilidad  rangos         = SensibilidadCalculator.calcularRangos(t, base, modelo, n, m, cols, n + m, slackCol, null, isMin);
+
         double zOpt = t[m][cols - 1];
-        if (isMin) zOpt = -zOpt; // revertir conversión MIN→MAX
+        if (isMin) zOpt = -zOpt;
 
         SolveStatus status = hasMultipleOptima(t, base, m, n + m)
                 ? SolveStatus.MULTIPLE_OPTIMO
@@ -174,7 +184,7 @@ public class SimplexSolver {
                 t, base, headers,
                 Map.of("valorOptimo", zFinal, "status", status.name())));
 
-        return new SolveResult<>(status, new SolucionLP(valores, zFinal), pasos);
+        return new SolveResult<>(status, new SolucionLP(valores, holguras, zFinal, preciosSombra, rangos), pasos);
     }
 
     private boolean hasMultipleOptima(double[][] t, int[] base, int m, int totalVars) {

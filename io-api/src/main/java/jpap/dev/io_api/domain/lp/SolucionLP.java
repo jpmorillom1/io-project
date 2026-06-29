@@ -4,5 +4,8 @@ import java.util.Map;
 
 public record SolucionLP(
         Map<String, Double> valores,
-        double valorOptimo
+        Map<String, Double> holguras,
+        double valorOptimo,
+        Map<String, Double> preciosSombra,
+        RangosSensibilidad rangosSensibilidad
 ) {}

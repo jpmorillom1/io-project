@@ -20,11 +20,19 @@ io-api/src/main/java/jpap/dev/io_api/
 │       ├── ModeloLP.java                          record(variables, objetivo, restricciones)
 │       ├── FuncionObjetivo.java                   record(coeficientes, tipo)
 │       ├── Restriccion.java                       record(coeficientes, tipo, rhs)
-│       ├── SolucionLP.java                        record(valores: Map<String,Double>, valorOptimo)
+│       ├── SolucionLP.java                        record(valores, holguras, valorOptimo, preciosSombra, rangosSensibilidad)
+│       ├── RangosSensibilidad.java                record(coeficientesObjetivo, rhs)
+│       ├── RangoCoeficiente.java                  record(variable, valorActual, min, max) — null = ±∞
+│       ├── RangoRHS.java                          record(restriccion, valorActual, min, max) — null = ±∞
+│       ├── SensibilidadCalculator.java            utilidad estática: holguras, precios sombra, rangos
 │       ├── TipoObjetivo.java                      enum: MAXIMIZAR, MINIMIZAR
 │       ├── TipoRestriccion.java                   enum: LEQ, GEQ, EQ
-│       └── simplex/
-│           └── SimplexSolver.java                 algoritmo completo con pasos (solo LEQ, b>=0)
+│       ├── simplex/
+│       │   └── SimplexSolver.java                 Simplex estándar (solo LEQ, b>=0); usa SensibilidadCalculator
+│       ├── granm/
+│       │   └── GranMSolver.java                   Gran M — LEQ/GEQ/EQ; usa SensibilidadCalculator
+│       └── dosfases/
+│           └── DosFasesSolver.java                Dos Fases — LEQ/GEQ/EQ; usa SensibilidadCalculator
 │
 │   ⏳ transporte/ (TODO estructurado)
 │   ⏳ redes/      (TODO estructurado)
@@ -35,11 +43,17 @@ io-api/src/main/java/jpap/dev/io_api/
 ├── application/                                   ◄ Casos de uso y puertos
 │   └── lp/
 │       ├── SimplexUseCase.java                    interfaz: resolver(ModeloLP) → SolveResult<SolucionLP>
-│       └── SimplexService.java                    @Service que delega a SimplexSolver
+│       ├── SimplexService.java                    @Service que delega a SimplexSolver
+│       ├── GranMUseCase.java                      interfaz: resolver(ModeloLP) → SolveResult<SolucionLP>
+│       ├── GranMService.java                      @Service que delega a GranMSolver
+│       ├── DosFasesUseCase.java                   interfaz: resolver(ModeloLP) → SolveResult<SolucionLP>
+│       └── DosFasesService.java                   @Service que delega a DosFasesSolver
 │
 └── infrastructure/                                ◄ Spring, JPA, LangChain4j, REST
     ├── lp/
-    │   └── SimplexController.java                 POST /api/v1/lp/simplex
+    │   ├── SimplexController.java                 POST /api/v1/lp/simplex
+    │   ├── GranMController.java                   POST /api/v1/lp/gran-m
+    │   └── DosFasesController.java                POST /api/v1/lp/dos-fases
     │
     ├── ai/
     │   ├── TutorAiService.java                    interfaz conversacional (@MemoryId, @UserMessage)
@@ -47,7 +61,9 @@ io-api/src/main/java/jpap/dev/io_api/
     │   ├── AiConfig.java                          @Configuration — beans manuales AiServices.builder()
     │   ├── AiChatController.java                  POST /api/v1/ai/{chat, sugerir-modelo, validar-modelo}
     │   ├── tools/
-    │   │   └── SimplexTool.java                   @Component con @Tool resolverSimplex(...)
+    │   │   ├── SimplexTool.java                   @Tool resolverSimplex(...) — solo LEQ
+    │   │   ├── GranMTool.java                     @Tool resolverGranM(...) — LEQ/GEQ/EQ
+    │   │   └── DosFasesTool.java                  @Tool resolverDosFases(...) — LEQ/GEQ/EQ (default)
     │   └── dto/
     │       ├── ChatRequest.java                   record(sesionId, mensaje)
     │       ├── ChatResponse.java                  record(sesionId, respuesta)
@@ -71,9 +87,14 @@ io-api/src/main/resources/
     └── V1__init.sql                               tablas: sesion, problema_resuelto, interaccion_ia
 
 io-api/src/test/java/jpap/dev/io_api/
-└── domain/lp/simplex/
-    └── SimplexSolverTest.java                     5 tests (sin Spring): MAX, MIN, no-acotado,
-                                                   validación inputs, estructura de pasos
+└── domain/lp/
+    ├── simplex/
+    │   └── SimplexSolverTest.java                 7 tests: MAX, MIN, no-acotado, validación,
+    │                                              pasos, holguras/precios-sombra/rangos, restricción no activa
+    ├── granm/
+    │   └── GranMSolverTest.java                   5 tests: LEQ+GEQ, todo-GEQ, EQ, infactible, pasos
+    └── dosfases/
+        └── DosFasesSolverTest.java                5 tests: LEQ+GEQ, todo-GEQ, EQ, infactible, fases en orden
 ```
 
 ---
