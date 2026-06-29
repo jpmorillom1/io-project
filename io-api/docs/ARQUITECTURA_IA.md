@@ -64,7 +64,9 @@ terminar, incluyéndolos en `ChatResponse`.
 |---|---|---|
 | `SugerirModeloTool.registrarModeloSugerido` | Cuando identifica el modelo completo del enunciado | `modeloSugerido: ModeloLP` |
 | `ValidarModeloTool.registrarValidacion` | Cuando evalúa el modelo del estudiante | `validacion: ValidacionResponse` |
-| `SimplexTool.resolverSimplex` | Solo cuando modelo validado y estudiante pide resolver | `resultado: SolveResult<SolucionLP>` |
+| `SimplexTool.resolverSimplex` | Modelo validado con solo restricciones ≤ | `resultado: SolveResult<SolucionLP>` |
+| `GranMTool.resolverGranM` | Modelo con restricciones ≥ o = (método Gran M) | `resultado: SolveResult<SolucionLP>` |
+| `DosFasesTool.resolverDosFases` | Modelo con restricciones ≥ o = (método por defecto) | `resultado: SolveResult<SolucionLP>` |
 
 El tutor puede **encadenar tools** en una misma respuesta. Ejemplo: al validar un modelo
 con errores puede llamar `registrarValidacion` + `registrarModeloSugerido` (con la versión
@@ -225,28 +227,12 @@ public ContentRetriever contentRetriever(EmbeddingStore<TextSegment> store,
 ```
 
 **`CorpusIngester.java`** — carga automática del corpus en ChromaDB:
-```java
-@PostConstruct
-public void ingestar() throws IOException {
-    if (!reingestar) { log.info("[RAG] re-ingesta omitida"); return; }
-    
-    embeddingStore.removeAll();  // limpiar para evitar duplicados
-    
-    PathMatchingResourcePatternResolver resolver = new PathMatchingResourcePatternResolver();
-    Resource[] recursos = resolver.getResources("classpath:corpus/**/*.md");
-    
-    DocumentSplitter splitter = DocumentSplitters.recursive(350, 30);
-    EmbeddingStoreIngestor ingestor = EmbeddingStoreIngestor.builder()
-            .documentSplitter(splitter)
-            .embeddingModel(embeddingModel)
-            .embeddingStore(embeddingStore)
-            .build();
-    
-    for (Resource recurso : recursos) {
-        ingestor.ingest(Document.from(recurso.getContentAsString()));
-    }
-}
-```
+
+Dos métodos privados con chunk sizes distintos, ambos bajo un toggle de re-ingesta:
+- `ingestarMarkdown()` — glob `corpus/**/*.md`, splitter 350/30, `Document.from(String)`
+- `ingestarPdf()` — glob `corpus/**/*.pdf`, splitter 700/70, `ApachePdfBoxDocumentParser`
+- Toggle adicional `app.rag.incluir-pdf` (env `RAG_INCLUIR_PDF`, default `true`) para
+  omitir el PDF cuando solo cambian los `.md` (re-ingesta rápida ~10 s vs ~2-4 min)
 
 **Integración en `AiConfig.java`**:
 ```java
@@ -261,7 +247,7 @@ public TutorAiService tutorAiService(..., ContentRetriever contentRetriever) {
 
 ### Corpus
 
-6 archivos markdown en `resources/corpus/lp/`:
+**Notas de teoría** — `resources/corpus/lp/` (6 archivos `.md`):
 1. **01_que_es_programacion_lineal.md** — qué es PL, cuándo aplica, propiedades formales
 2. **02_como_formular_un_modelo_lp.md** — paso a paso de formulación, ejemplos
 3. **03_metodo_simplex_teoria.md** — tableau, Dantzig, razón mínima, pivote
@@ -269,7 +255,12 @@ public TutorAiService tutorAiService(..., ContentRetriever contentRetriever) {
 5. **05_casos_especiales.md** — infactible, no acotado, óptimos múltiples
 6. **06_errores_comunes_al_modelar.md** — 6 errores de formulación comunes
 
-Total: **~60 chunks** de 350 chars con overlap de 30.
+**Libro de texto** — `resources/corpus/` (raíz, no en subcarpeta):
+- **investigacion-de-operaciones-taha-hamdy-2004.pdf** — Taha, 200 págs, todos los módulos de IO
+
+**Chunks totales** estimados tras ingesta completa:
+- `.md` → ~60 chunks (350 chars / 30 overlap)
+- `.pdf` → ~300–600 chunks (700 chars / 70 overlap, según densidad de texto extraíble)
 
 ### Flujo en cada turno del chat
 
@@ -301,8 +292,10 @@ Tutor responde fundamentado en la teoría, no inventando
 
 - **Chunking**: 350 chars + 30 de overlap → cada sección `##` queda autocontenida
 - **Retrieval**: 6 fragmentos, score ≥ 0.5 (balance entre relevancia y cobertura)
-- **Re-ingesta**: `app.rag.reingestar` en `application.yaml` (default false)
-  - Si modificas los `.md`: arranca con `RAG_REINGESTAR=true` una vez
+- **Re-ingesta**: controlada por dos flags en `application.yaml`:
+  - `RAG_REINGESTAR=true RAG_INCLUIR_PDF=true` → MD + PDF (~2-4 min, setup inicial)
+  - `RAG_REINGESTAR=true RAG_INCLUIR_PDF=false` → solo MD (~10 s, iterando teoría)
+  - `RAG_REINGESTAR=false` (default) → nada, arranque normal
   
 ### Notas importantes
 

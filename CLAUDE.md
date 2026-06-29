@@ -185,9 +185,9 @@ Tres responsabilidades separadas (detalle en `docs/ARQUITECTURA_IA.md`):
 
 ### RAG — Retrieval Augmented Generation (IMPLEMENTADO )
 
-El tutor accede a un corpus de teoría de IO mediante embeddings:
+El tutor accede a un corpus de teoría de IO mediante embeddings. El corpus tiene dos fuentes:
 
-**Corpus** — 6 archivos `.md` en `src/main/resources/corpus/lp/`:
+**Corpus — archivos `.md` de teoría** (`src/main/resources/corpus/lp/`):
 - `01_que_es_programacion_lineal.md` — definición, cuándo aplica, características formales
 - `02_como_formular_un_modelo_lp.md` — paso a paso de formulación, ejemplos
 - `03_metodo_simplex_teoria.md` — tableau, regla Dantzig, razón mínima, pivote, optimalidad
@@ -195,11 +195,29 @@ El tutor accede a un corpus de teoría de IO mediante embeddings:
 - `05_casos_especiales.md` — infactible, no acotado, óptimos múltiples, degeneración
 - `06_errores_comunes_al_modelar.md` — 6 errores frecuentes de formulación (MAX/MIN, coeficientes, etc.)
 
+**Corpus — libro de texto** (`src/main/resources/corpus/`):
+- `investigacion-de-operaciones-taha-hamdy-2004.pdf` — libro completo de IO (200 págs, todos los módulos)
+- Va en la raíz de `corpus/` (no en `lp/`) porque cubre transporte, redes, PD, inventarios, etc.
+- Parseado con `ApachePdfBoxDocumentParser` (`langchain4j-document-parser-apache-pdfbox:1.13.0-beta23`)
+
+**Estructura del corpus**:
+```
+src/main/resources/corpus/
+├── investigacion-de-operaciones-taha-hamdy-2004.pdf   ← libro general (todos los módulos)
+└── lp/
+    ├── 01_que_es_programacion_lineal.md
+    ├── 02_como_formular_un_modelo_lp.md
+    ├── 03_metodo_simplex_teoria.md
+    ├── 04_interpretacion_de_resultados.md
+    ├── 05_casos_especiales.md
+    └── 06_errores_comunes_al_modelar.md
+```
+
 **Ingesta** — `infrastructure/ai/rag/CorpusIngester.java`:
-- Al arrancar: carga todos los `.md`, chunking 350 chars + 30 de overlap
-- Genera ~60 chunks de la teoría de IO
-- Almacena en ChromaDB colección `io-corpus` (v2 API)
-- Control de re-ingesta via `app.rag.reingestar` (default: false después de la primera carga)
+- **Markdown** (`*.md`): chunking 350 chars + 30 overlap → ~60 chunks de notas de teoría LP
+- **PDF** (`*.pdf`): chunking 700 chars + 70 overlap → ~300–600 chunks del libro (prosa densa)
+- Ambas fuentes van a la misma colección `io-corpus` en ChromaDB
+- Toggle `app.rag.incluir-pdf` (`RAG_INCLUIR_PDF`) para omitir el PDF en re-ingestas rápidas
 
 **Retrieval** — `infrastructure/ai/rag/RagConfig.java`:
 - Bean `EmbeddingModel`: AllMiniLmL6V2QuantizedEmbeddingModel (local, ~100MB)
@@ -208,8 +226,8 @@ El tutor accede a un corpus de teoría de IO mediante embeddings:
 
 **Cómo funciona** — en cada turno del chat:
 1. Estudiante pregunta → LangChain4j embede la pregunta
-2. Busca en ChromaDB los 6 fragmentos más similares (score ≥ 0.5)
-3. Los inyecta como contexto en el prompt del LLM: "Usa la siguiente información para responder..."
+2. Busca en ChromaDB los 6 fragmentos más similares (score ≥ 0.5) — de MD o PDF indistintamente
+3. Los inyecta como contexto en el prompt del LLM
 4. El tutor responde fundamentado en la teoría, no solo en conocimiento general
 
 **Notas críticas**:
@@ -217,14 +235,19 @@ El tutor accede a un corpus de teoría de IO mediante embeddings:
 - ChromaDB v2 API (no v1) — LangChain4j 1.13.0-beta23 requiere `.apiVersion(ChromaApiVersion.V2)`
 - Excluir `langchain4j-http-client-jdk` en `build.gradle` para evitar conflicto con Spring RestClient
 - El `ModeloAiService` (extracción/validación estructurada) NO recibe ContentRetriever — no lo necesita
+- Si el PDF es un escaneo sin capa de texto, PDFBox no extrae nada — verificar log `[RAG] PDF extraído: X caracteres`
 
-**Cómo re-ingestar si cambias el corpus**:
+**Cómo re-ingestar según el escenario**:
 ```bash
-# 1. Editar archivos .md en src/main/resources/corpus/lp/
-# 2. Arrancar con:
-RAG_REINGESTAR=true gradle bootRun
-# 3. Una vez que ingeste, volver a:
-RAG_REINGESTAR=false gradle bootRun  (default en application.yaml)
+# Setup inicial o si cambia el libro:
+RAG_REINGESTAR=true RAG_INCLUIR_PDF=true gradle bootRun    # MD + PDF (~2-4 min)
+
+# Solo editaste archivos .md de teoría:
+RAG_REINGESTAR=true RAG_INCLUIR_PDF=false gradle bootRun   # solo MD (~10 s)
+
+# Arranque normal (no re-ingesta):
+# RAG_REINGESTAR=false es el default en application.yaml
+gradle bootRun
 ```
 
 ---
@@ -258,6 +281,7 @@ La memoria de sesión es **en RAM** (se pierde al reiniciar). La persistencia en
 - ❌ No uses `ChatLanguageModel` — en LangChain4j 1.13.0 es `ChatModel`.
 - ❌ No uses `@AiService` del starter para nuevos services — usa `AiServices.builder()`.
 - ❌ No modifiques los archivos `.md` del corpus sin re-ingestar (`RAG_REINGESTAR=true`).
+- ❌ No pongas el PDF del libro en `corpus/lp/` — va en la raíz de `corpus/` porque cubre todos los módulos.
 
 ---
 

@@ -1,20 +1,23 @@
 # Guía de implementación RAG — io-api
 
-> **STATUS: COMPLETADO ** — Esta guía documenta la implementación del RAG realizada.
+> **STATUS: COMPLETADO  (con soporte PDF)** — Esta guía documenta la implementación del RAG realizada.
 > Para más contexto, lee `CLAUDE.md` sección 7 y `docs/ARQUITECTURA_IA.md`.
 
 ---
 
 ## Contexto
 
-El proyecto ya tiene todo lo necesario a nivel de dependencias. No hay que agregar nada
-al `build.gradle`. Lo que falta es construir tres piezas en orden.
+El proyecto tiene todo lo necesario a nivel de dependencias para soportar Markdown y PDF.
 
-**Lo que YA existe:**
+**Dependencias LangChain4j activas en `build.gradle`:**
 ```groovy
-// build.gradle — ya están estas líneas
-implementation 'dev.langchain4j:langchain4j-chroma:1.13.0-beta23'
+implementation 'dev.langchain4j:langchain4j-spring-boot4-starter:1.13.0-beta23'
+implementation 'dev.langchain4j:langchain4j-open-ai-spring-boot4-starter:1.13.0-beta23'
+implementation('dev.langchain4j:langchain4j-chroma:1.13.0-beta23') {
+    exclude group: 'dev.langchain4j', module: 'langchain4j-http-client-jdk'
+}
 implementation 'dev.langchain4j:langchain4j-embeddings-all-minilm-l6-v2-q:1.13.0-beta23'
+implementation 'dev.langchain4j:langchain4j-document-parser-apache-pdfbox:1.13.0-beta23'
 ```
 
 ```yaml
@@ -42,6 +45,7 @@ app:
 ### Dónde va
 ```
 io-api/src/main/resources/corpus/
+├── investigacion-de-operaciones-taha-hamdy-2004.pdf   ← libro general (todos los módulos)
 └── lp/
     ├── 01_que_es_programacion_lineal.md
     ├── 02_como_formular_un_modelo_lp.md
@@ -51,11 +55,15 @@ io-api/src/main/resources/corpus/
     └── 06_errores_comunes_al_modelar.md
 ```
 
-Cuando se implementen otros módulos, agregar carpetas hermanas:
+**Regla de ubicación**: los libros PDF van en la raíz de `corpus/` (no en subcarpetas de módulo)
+porque cubren todos los temas. Los `.md` de teoría van en la subcarpeta del módulo al que pertenecen.
+
+Cuando se implementen otros módulos, agregar carpetas hermanas para sus notas `.md`:
 ```
 corpus/
-├── lp/
-├── transporte/
+├── investigacion-de-operaciones-taha-hamdy-2004.pdf   ← ya existe
+├── lp/          ← ya existe
+├── transporte/  ← agregar cuando se implemente el módulo
 ├── redes/
 ├── entera/
 ├── dinamica/
@@ -142,86 +150,25 @@ public class RagConfig {
 
 ---
 
-### Nuevo archivo: `infrastructure/ai/rag/CorpusIngester.java`
+### `infrastructure/ai/rag/CorpusIngester.java` (implementación actual)
 
-```java
-package jpap.dev.io_api.infrastructure.ai.rag;
+Maneja dos fuentes de forma independiente con chunk sizes distintos:
 
-import dev.langchain4j.data.document.Document;
-import dev.langchain4j.data.document.DocumentSplitter;
-import dev.langchain4j.data.document.splitter.DocumentSplitters;
-import dev.langchain4j.data.segment.TextSegment;
-import dev.langchain4j.model.embedding.EmbeddingModel;
-import dev.langchain4j.store.embedding.EmbeddingStore;
-import dev.langchain4j.store.embedding.EmbeddingStoreIngestor;
-import jakarta.annotation.PostConstruct;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.core.io.Resource;
-import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
-import org.springframework.stereotype.Component;
+| Fuente | Glob | Chunk | Overlap | Parser |
+|--------|------|-------|---------|--------|
+| `.md` notas de teoría | `corpus/**/*.md` | 350 | 30 | `Document.from(String)` |
+| `.pdf` libro de texto | `corpus/**/*.pdf` | 700 | 70 | `ApachePdfBoxDocumentParser` |
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
+El toggle `app.rag.incluir-pdf` (env `RAG_INCLUIR_PDF`, default `true`) permite omitir el
+PDF para re-ingestas rápidas cuando solo cambiaron los `.md`. Ambas fuentes van a la misma
+colección `io-corpus`; `removeAll()` limpia todo antes de re-ingestar.
 
-@Slf4j
-@Component
-public class CorpusIngester {
-
-    private final EmbeddingStore<TextSegment> embeddingStore;
-    private final EmbeddingModel embeddingModel;
-
-    public CorpusIngester(EmbeddingStore<TextSegment> embeddingStore,
-                          EmbeddingModel embeddingModel) {
-        this.embeddingStore = embeddingStore;
-        this.embeddingModel = embeddingModel;
-    }
-
-    @PostConstruct
-    public void ingestar() throws IOException {
-        // Solo ingesta si la colección está vacía (evita duplicados al reiniciar)
-        // Nota: ChromaEmbeddingStore no tiene método size() directo en 1.13.0;
-        // usar una variable de entorno o flag en application.yaml para controlar
-        // si se re-ingesta: app.rag.reingestar=false
-
-        log.info("[RAG] Iniciando ingesta del corpus...");
-
-        PathMatchingResourcePatternResolver resolver = new PathMatchingResourcePatternResolver();
-        Resource[] recursos = resolver.getResources("classpath:corpus/**/*.md");
-
-        if (recursos.length == 0) {
-            log.warn("[RAG] No se encontraron archivos en classpath:corpus/. Ingesta omitida.");
-            return;
-        }
-
-        DocumentSplitter splitter = DocumentSplitters.recursive(
-                500,   // tamaño máximo del chunk en caracteres
-                50     // solapamiento entre chunks (overlap)
-        );
-
-        EmbeddingStoreIngestor ingestor = EmbeddingStoreIngestor.builder()
-                .documentSplitter(splitter)
-                .embeddingModel(embeddingModel)
-                .embeddingStore(embeddingStore)
-                .build();
-
-        for (Resource recurso : recursos) {
-            String contenido = recurso.getContentAsString(StandardCharsets.UTF_8);
-            Document documento = Document.from(contenido);
-            ingestor.ingest(documento);
-            log.info("[RAG] Ingestado: {}", recurso.getFilename());
-        }
-
-        log.info("[RAG] Ingesta completada — {} archivo(s) procesados.", recursos.length);
-    }
-}
+**Guard contra PDF escaneado**: si PDFBox extrae menos de ~10k caracteres, el PDF es
+probablemente un escaneo sin capa de texto y no aportará contenido al RAG. Ver log:
 ```
-
-> **Sobre el control de re-ingesta:** la ingesta al arrancar siempre duplicará documentos
-> si Chroma ya tiene datos. Opciones:
-> - Opción simple: agregar `app.rag.reingestar=true/false` en `application.yaml` y
->   wrappear el `@PostConstruct` con esa condición
-> - Opción robusta: antes de ingestar, limpiar la colección con
->   `embeddingStore.removeAll()` (disponible en LangChain4j 1.13.0)
+[RAG] PDF extraído: X caracteres — investigacion-de-operaciones-taha-hamdy-2004.pdf
+[RAG] Muestra: ...  (primeros 300 chars para verificar legibilidad, nivel DEBUG)
+```
 
 ---
 
@@ -310,19 +257,23 @@ no solo en el conocimiento general del LLM
 
 ### Completado
 -  Corpus de 6 archivos `.md` en `src/main/resources/corpus/lp/`
+-  Libro Taha "Investigación de Operaciones" (200 págs) en `src/main/resources/corpus/`
 -  `RagConfig.java` con EmbeddingModel + EmbeddingStore + ContentRetriever
--  `CorpusIngester.java` con carga automática e ingesta controlada
--  Modificación de `AiConfig.java` para inyectar ContentRetriever en TutorAiService
+-  `CorpusIngester.java` con soporte dual MD + PDF y chunking diferenciado
+-  `langchain4j-document-parser-apache-pdfbox:1.13.0-beta23` añadida a `build.gradle`
+-  Toggle `app.rag.incluir-pdf` (`RAG_INCLUIR_PDF`) en `application.yaml`
+-  `AiConfig.java` inyecta ContentRetriever en TutorAiService
 -  Exclusión de `langchain4j-http-client-jdk` en `build.gradle` para evitar conflictos HTTP
 -  ChromaDB API v2 configurado correctamente (`.apiVersion(ChromaApiVersion.V2)`)
--  Corpus ingestado: 53 chunks en colección `io-corpus`
--  Tests de recuperación: RAG recupera fragmentos correctos y los inyecta en el prompt
--  Correcciones de corpus: archivos 04 y 06 ajustados para mejor recuperación
 
-### Parámetros recomendados (ya configurados)
-- **Chunking**: 350 caracteres con 30 de overlap (cada sección `##` queda autocontenida)
-- **Retrieval**: máximo 6 fragmentos, score mínimo 0.5
-- **Re-ingesta**: `app.rag.reingestar = false` (por defecto, solo true cuando cambias el corpus)
+### Parámetros de chunking (ya configurados)
+| Fuente | Chunk size | Overlap | Justificación |
+|--------|-----------|---------|---------------|
+| `.md` teoría | 350 chars | 30 | Secciones `##` cortas, autocontenidas |
+| `.pdf` libro | 700 chars | 70 | Prosa densa; ~140 tokens (límite AllMiniLM = 256) |
+
+### Parámetros de retrieval (ya configurados)
+- Máximo **6 fragmentos** por consulta, score mínimo **0.5**
 
 ### Notas operacionales
 
@@ -331,24 +282,35 @@ no solo en el conocimiento general del LLM
   docker compose up chromadb -d
   ```
 
-- **La primera carga** ingesta los 6 archivos en ~10-30 segundos (AllMiniLM en CPU).
+- **Flujos de re-ingesta**:
 
-- **Si modificas los archivos `.md`**: Reinicia con `RAG_REINGESTAR=true`, luego vuelve a `false`.
+  | Comando | Acción | Tiempo aprox. | Cuándo |
+  |---------|--------|---------------|--------|
+  | `RAG_REINGESTAR=true RAG_INCLUIR_PDF=true` | MD + PDF | ~2-4 min | Setup inicial, libro cambió |
+  | `RAG_REINGESTAR=true RAG_INCLUIR_PDF=false` | Solo MD | ~10 s | Editaste archivos `.md` |
+  | `RAG_REINGESTAR=false` (default) | Nada | — | Arranque normal |
 
-- **El `ModeloAiService`** (extracción y validación estructurada) deliberadamente NO
-  recibe el `ContentRetriever` — solo el `TutorAiService` lo usa para teoría.
+- **Verificar extracción del PDF** — revisar en logs al arrancar con `RAG_REINGESTAR=true`:
+  - `[RAG] PDF extraído: X caracteres` → si X > 50k, el PDF tiene texto extraíble
+  - Si X < 10k → es un escaneo; PDFBox no puede extraer texto sin OCR
+
+- **El `ModeloAiService`** deliberadamente NO recibe el `ContentRetriever` — solo el
+  `TutorAiService` lo usa.
 
 ---
 
-## Archivos modificados en esta sesión 
+## Historial de cambios
 
-| Acción | Archivo | Status |
+| Acción | Archivo | Estado |
 |---|---|---|
-| Crear | `src/main/resources/corpus/lp/01_*.md` a `06_*.md` (6 archivos) |  DONE |
+| Crear | `corpus/lp/01_*.md` a `06_*.md` (6 archivos) |  DONE |
 | Crear | `infrastructure/ai/rag/RagConfig.java` |  DONE |
 | Crear | `infrastructure/ai/rag/CorpusIngester.java` |  DONE |
-| Modificar | `infrastructure/ai/AiConfig.java` (añadir `.contentRetriever(...)`) |  DONE |
+| Modificar | `infrastructure/ai/AiConfig.java` (`.contentRetriever(...)`) |  DONE |
 | Modificar | `build.gradle` (exclude `langchain4j-http-client-jdk`) |  DONE |
-| Verificar | `application.yaml` — chroma-url, app.rag.reingestar |  DONE |
+| Modificar | `build.gradle` (añadir `langchain4j-document-parser-apache-pdfbox`) |  DONE |
+| Modificar | `application.yaml` (añadir `app.rag.incluir-pdf`) |  DONE |
+| Modificar | `CorpusIngester.java` (soporte PDF + chunking diferenciado) |  DONE |
+| Añadir | `corpus/investigacion-de-operaciones-taha-hamdy-2004.pdf` (libro Taha) |  DONE |
 | Corregir | `corpus/lp/04_*.md` — sección de holgura (sᵢ=0 vs sᵢ>0) |  DONE |
 | Corregir | `corpus/lp/06_*.md` — estructura para mejor recuperación |  DONE |
