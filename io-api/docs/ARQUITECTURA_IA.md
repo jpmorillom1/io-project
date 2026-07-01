@@ -67,6 +67,7 @@ terminar, incluyéndolos en `ChatResponse`.
 | `SimplexTool.resolverSimplex` | Modelo validado con solo restricciones ≤ | `resultado: SolveResult<SolucionLP>` |
 | `GranMTool.resolverGranM` | Modelo con restricciones ≥ o = (método Gran M) | `resultado: SolveResult<SolucionLP>` |
 | `DosFasesTool.resolverDosFases` | Modelo con restricciones ≥ o = (método por defecto) | `resultado: SolveResult<SolucionLP>` |
+| `GraficoTool.resolverGrafico` | Modelo con exactamente 2 variables + estudiante pide método gráfico | `resultadoGrafico: SolveResult<SolucionGrafica>` |
 
 El tutor puede **encadenar tools** en una misma respuesta. Ejemplo: al validar un modelo
 con errores puede llamar `registrarValidacion` + `registrarModeloSugerido` (con la versión

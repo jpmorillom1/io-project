@@ -3,6 +3,12 @@
 > Referencia para el agente React que va a construir la interfaz.
 > Stack decidido: React + Vite (en `io-ui/`).
 > La API que consume está documentada en `io-api/docs/FRONTEND_INTEGRATION.md`.
+>
+> ⚠️ Las secciones **"Layout general"** y **"1. Home — selector de módulo"**
+> describen el diseño original, ya reemplazado por el shell con rail de
+> íconos + toolbar. Ver `docs/LAYOUT_SHELL.md` para el layout implementado.
+> El resto de este documento (stack, arquitectura de capas, hooks, estados,
+> flujos de usuario) sigue vigente.
 
 ---
 

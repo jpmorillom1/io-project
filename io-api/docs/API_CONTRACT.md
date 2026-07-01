@@ -330,7 +330,7 @@ Detecta coeficientes incorrectos, restricciones faltantes, tipo de optimización
 
 ```
 POST /api/v1/lp/dual          → pendiente
-POST /api/v1/lp/grafico       → pendiente (solo 2 variables)
+POST /api/v1/lp/grafico       → ✅ IMPLEMENTADO (solo 2 variables, LEQ/GEQ/EQ)
 
 POST /api/v1/transporte/resolver   → pendiente
 POST /api/v1/redes/resolver        → pendiente
