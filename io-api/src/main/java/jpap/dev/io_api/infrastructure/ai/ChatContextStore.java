@@ -3,6 +3,7 @@ package jpap.dev.io_api.infrastructure.ai;
 import jpap.dev.io_api.domain.common.SolveResult;
 import jpap.dev.io_api.domain.lp.ModeloLP;
 import jpap.dev.io_api.domain.lp.SolucionLP;
+import jpap.dev.io_api.domain.lp.grafico.SolucionGrafica;
 import jpap.dev.io_api.infrastructure.ai.dto.ValidacionResponse;
 import org.springframework.stereotype.Component;
 
@@ -35,5 +36,6 @@ public class ChatContextStore {
         public ModeloLP modeloSugerido;
         public ValidacionResponse validacion;
         public SolveResult<SolucionLP> resultado;
+        public SolveResult<SolucionGrafica> resultadoGrafico;
     }
 }

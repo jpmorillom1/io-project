@@ -68,17 +68,19 @@ public class AiChatController {
             String respuesta = tutorAiService.chat(sesionId, request.mensaje());
             DatosRespuesta datos = contextStore.obtener();
 
-            log.info("[AI/chat] tools invocadas — modelo={} validacion={} resultado={}",
+            log.info("[AI/chat] tools invocadas — modelo={} validacion={} resultado={} grafico={}",
                     datos.modeloSugerido != null,
                     datos.validacion != null,
-                    datos.resultado != null);
+                    datos.resultado != null,
+                    datos.resultadoGrafico != null);
             log.debug("[AI/chat] respuesta: {}", respuesta);
 
             return ResponseEntity.ok(new ChatResponse(
                     sesionId, respuesta,
                     datos.modeloSugerido,
                     datos.validacion,
-                    datos.resultado
+                    datos.resultado,
+                    datos.resultadoGrafico
             ));
         } finally {
             contextStore.limpiar();

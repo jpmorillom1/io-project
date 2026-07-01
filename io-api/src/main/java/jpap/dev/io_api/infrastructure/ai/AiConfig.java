@@ -5,6 +5,7 @@ import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.rag.content.retriever.ContentRetriever;
 import dev.langchain4j.service.AiServices;
 import jpap.dev.io_api.infrastructure.ai.tools.DosFasesTool;
+import jpap.dev.io_api.infrastructure.ai.tools.GraficoTool;
 import jpap.dev.io_api.infrastructure.ai.tools.GranMTool;
 import jpap.dev.io_api.infrastructure.ai.tools.SimplexTool;
 import jpap.dev.io_api.infrastructure.ai.tools.SugerirModeloTool;
@@ -39,13 +40,14 @@ public class AiConfig {
                                          ValidarModeloTool validarTool,
                                          GranMTool granMTool,
                                          DosFasesTool dosFasesTool,
+                                         GraficoTool graficoTool,
                                          ContentRetriever contentRetriever)
             throws IOException {
         String systemPrompt = cargarPrompt("classpath:prompts/tutor_system_prompt.txt");
         return AiServices.builder(TutorAiService.class)
                 .chatModel(chatModel)
                 .chatMemoryProvider(memId -> MessageWindowChatMemory.withMaxMessages(30))
-                .tools(simplexTool, sugerirTool, validarTool, granMTool, dosFasesTool)
+                .tools(simplexTool, sugerirTool, validarTool, granMTool, dosFasesTool, graficoTool)
                 .systemMessageProvider(memId -> systemPrompt)
                 .contentRetriever(contentRetriever)
                 .build();
