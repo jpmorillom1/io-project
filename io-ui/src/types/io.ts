@@ -80,6 +80,7 @@ export interface ChatResponse {
   modeloSugerido: ModeloLP | null
   validacion: ValidacionResponse | null
   resultado: SolveResult | null
+  resultadoGrafico: SolveResultGrafico | null
 }
 
 export interface ModeloSugeridoResponse {
@@ -122,3 +123,53 @@ export type WorkspaceStatus =
   | 'INVALID'
   | 'SOLVING'
   | 'SOLVED'
+
+// ── Método gráfico ─────────────────────────────────────────────────────────
+
+export interface PuntoVertice {
+  x: number
+  y: number
+  valorZ: number
+  esOptimo: boolean
+  etiqueta: string
+}
+
+export interface LineaGrafico {
+  indice: number
+  etiqueta: string
+  tipo: TipoRestriccion
+  puntos: Array<{ x: number; y: number }>
+}
+
+export interface StepDatosGrafico {
+  tipo: 'GRAFICO'
+  var1: string
+  var2: string
+  xMax: number
+  yMax: number
+  lineas: LineaGrafico[]
+  vertices: PuntoVertice[]
+  region: Array<[number, number]>
+}
+
+export interface SolveStepGrafico {
+  numero: number
+  titulo: string
+  descripcion: string
+  datos: StepDatosGrafico
+}
+
+export interface SolucionGrafica {
+  valores: Record<string, number>
+  valorOptimo: number
+  vertices: PuntoVertice[]
+  region: Array<[number, number]>
+  xMax: number
+  yMax: number
+}
+
+export interface SolveResultGrafico {
+  status: SolveStatus
+  solution: SolucionGrafica | null
+  steps: SolveStepGrafico[]
+}

@@ -1,5 +1,5 @@
 import { useState, type CSSProperties } from 'react'
-import { useModeloForm, useValidarModelo, useSimplex } from '@/hooks'
+import { useModeloForm, useValidarModelo, useSimplex, useGrafico } from '@/hooks'
 import { useWorkspaceStore } from '@/store/useWorkspaceStore'
 import { Button } from '@/components/ui/button'
 import { ValidationFeedback } from './ValidationFeedback'
@@ -13,13 +13,15 @@ export function ModelEditor() {
   const form = useModeloForm()
   const { validar, isValidating, errores, sugerencias } = useValidarModelo()
   const { resolver, isSolving, error: errorSolver } = useSimplex()
+  const { resolver: graficar, isSolving: isGraficando, error: errorGrafico } = useGrafico()
   const descripcionProblema = useWorkspaceStore(s => s.descripcionProblema)
   const status = useWorkspaceStore(s => s.status)
   const isChatBusy = useWorkspaceStore(s => s.isChatBusy)
   const ultimaActualizacionIA = useWorkspaceStore(s => s.ultimaActualizacionIA)
 
   const modelo = form.modelo
-  const disabled = isChatBusy || isSolving || isValidating
+  const disabled = isChatBusy || isSolving || isGraficando || isValidating
+  const puedeGraficar = modelo.variables.length === 2
 
   function numInput(value: number, onChange: (v: number) => void) {
     return (
@@ -55,9 +57,9 @@ export function ModelEditor() {
         <ShaderGlow target="banner" state="done">
           <BotMessageSquare className="h-3.5 w-3.5 shrink-0" />
           <span>
-            {ultimaActualizacionIA === 'modelo' && 'Ío completó el formulario con el modelo sugerido ✓'}
-            {ultimaActualizacionIA === 'validacion' && 'Ío validó el modelo ✓'}
-            {ultimaActualizacionIA === 'resultado' && 'Ío resolvió el problema — revisa el tableau ✓'}
+            {ultimaActualizacionIA === 'modelo' && 'Pivot completó el formulario con el modelo sugerido ✓'}
+            {ultimaActualizacionIA === 'validacion' && 'Pivot validó el modelo ✓'}
+            {ultimaActualizacionIA === 'resultado' && 'Pivot resolvió el problema — revisa el tableau ✓'}
           </span>
         </ShaderGlow>
       )}
@@ -65,7 +67,7 @@ export function ModelEditor() {
       {isChatBusy && (
         <ShaderGlow target="banner" state="processing">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          Ío está respondiendo — el formulario se actualizará automáticamente
+          Pivot está respondiendo — el formulario se actualizará automáticamente
         </ShaderGlow>
       )}
 
@@ -180,6 +182,9 @@ export function ModelEditor() {
       {errorSolver && (
         <p className="text-xs" style={{ color: 'var(--ij-red)' }}>{errorSolver}</p>
       )}
+      {errorGrafico && (
+        <p className="text-xs" style={{ color: 'var(--ij-red)' }}>{errorGrafico}</p>
+      )}
 
       <div className="flex gap-2 justify-end">
         <Button
@@ -189,6 +194,15 @@ export function ModelEditor() {
         >
           {isValidating && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
           Validar
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => graficar(modelo)}
+          disabled={disabled || !puedeGraficar}
+          title={puedeGraficar ? undefined : 'Solo disponible con exactamente 2 variables'}
+        >
+          {isGraficando && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
+          Graficar
         </Button>
         <Button onClick={() => resolver(modelo)} disabled={disabled}>
           {isSolving && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}

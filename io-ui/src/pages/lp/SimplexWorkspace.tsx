@@ -3,6 +3,7 @@ import { ChatPanel } from '@/components/chat/ChatPanel'
 import { ProblemInput } from '@/components/lp/ProblemInput'
 import { ModelEditor } from '@/components/lp/ModelEditor'
 import { TableauViewer } from '@/components/lp/TableauViewer'
+import { GraficoResultViewer } from '@/components/lp/GraficoResultViewer'
 import { Separator } from '@/components/ui/separator'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { useWorkspaceStore } from '@/store/useWorkspaceStore'
@@ -10,20 +11,19 @@ import { MessageSquareText, ChevronDown } from 'lucide-react'
 
 export function SimplexWorkspace() {
   const resultado = useWorkspaceStore(s => s.resultado)
+  const resultadoGrafico = useWorkspaceStore(s => s.resultadoGrafico)
   const status = useWorkspaceStore(s => s.status)
   const [flujoBExpanded, setFlujoBExpanded] = useState(false)
 
   const isIdle = status === 'IDLE'
 
   return (
-    <div className="flex h-screen overflow-hidden" style={{ background: 'var(--ij-bg-secondary)' }}>
-      {/* Panel izquierdo — Tutor Ío */}
+    <div className="flex h-full overflow-hidden gap-3">
+      {/* Panel izquierdo — Asistente Pivot (card flotante) */}
       <div
-        className="w-[420px] shrink-0 flex flex-col overflow-hidden"
+        className="w-[420px] shrink-0 flex flex-col overflow-hidden rounded-[10px]"
         style={{
           background: 'var(--ij-bg-editor)',
-          borderTopRightRadius: '14px',
-          borderBottomRightRadius: '14px',
           boxShadow: '0 0 0 1px var(--ij-bg-editor)',
         }}
       >
@@ -31,7 +31,7 @@ export function SimplexWorkspace() {
       </div>
 
       {/* Panel derecho */}
-      <div className="flex-1 overflow-y-auto" style={{ background: 'var(--ij-bg-secondary)' }}>
+      <div className="flex-1 overflow-y-auto">
         {isIdle ? (
           <div className="flex flex-col items-center justify-center h-full p-12 text-center gap-4">
             <div
@@ -45,7 +45,7 @@ export function SimplexWorkspace() {
                 className="text-base font-semibold"
                 style={{ color: 'var(--ij-text-primary)' }}
               >
-                Cuéntale tu problema al Tutor Ío
+                Cuéntale tu problema al Asistente Pivot
               </h2>
               <p className="text-sm mt-1 max-w-xs" style={{ color: 'var(--ij-text-secondary)' }}>
                 Escribe en el chat y el tutor formulará el modelo, lo validará y lo resolverá paso a paso.
@@ -82,13 +82,13 @@ export function SimplexWorkspace() {
             </div>
           </div>
         ) : (
-          <div className="p-6 space-y-5">
+          <div className="p-6 max-w-4xl space-y-5">
             <Card>
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
                   <CardTitle>Modelo LP</CardTitle>
                   <span className="text-xs" style={{ color: 'var(--ij-text-secondary)' }}>
-                    Completado por Ío o editado manualmente
+                    Completado por Pivot o editado manualmente
                   </span>
                 </div>
               </CardHeader>
@@ -114,6 +114,13 @@ export function SimplexWorkspace() {
               <>
                 <Separator />
                 <TableauViewer resultado={resultado} />
+              </>
+            )}
+
+            {resultadoGrafico && (
+              <>
+                <Separator />
+                <GraficoResultViewer resultado={resultadoGrafico} />
               </>
             )}
           </div>

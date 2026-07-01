@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { ModeloLP, SolveResult, WorkspaceStatus, ValidacionResponse } from '@/types/io'
+import type { ModeloLP, SolveResult, SolveResultGrafico, WorkspaceStatus, ValidacionResponse } from '@/types/io'
 
 type ActualizacionIA = 'modelo' | 'validacion' | 'resultado' | null
 
@@ -11,6 +11,7 @@ interface WorkspaceStore {
   erroresValidacion: string[]
   sugerenciasValidacion: string[]
   resultado: SolveResult | null
+  resultadoGrafico: SolveResultGrafico | null
   validado: boolean
   isChatBusy: boolean
   ultimaActualizacionIA: ActualizacionIA
@@ -21,6 +22,7 @@ interface WorkspaceStore {
   setModelo: (m: ModeloLP | null) => void
   setErroresValidacion: (e: string[]) => void
   setResultado: (r: SolveResult | null) => void
+  setResultadoGrafico: (r: SolveResultGrafico | null) => void
   setValidado: (v: boolean) => void
   resetResultado: () => void
   setValidacion: (v: ValidacionResponse) => void
@@ -36,6 +38,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
   erroresValidacion: [],
   sugerenciasValidacion: [],
   resultado: null,
+  resultadoGrafico: null,
   validado: false,
   isChatBusy: false,
   ultimaActualizacionIA: null,
@@ -46,8 +49,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
   setModelo: (modelo) => set({ modelo }),
   setErroresValidacion: (erroresValidacion) => set({ erroresValidacion }),
   setResultado: (resultado) => set({ resultado }),
+  setResultadoGrafico: (resultadoGrafico) => set({ resultadoGrafico }),
   setValidado: (validado) => set({ validado }),
-  resetResultado: () => set({ resultado: null, status: 'EDITING', validado: false }),
+  resetResultado: () => set({ resultado: null, resultadoGrafico: null, status: 'EDITING', validado: false }),
   setValidacion: (v) => set({
     erroresValidacion: v.erroresEncontrados,
     sugerenciasValidacion: v.sugerencias,

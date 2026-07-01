@@ -1,4 +1,5 @@
 export { useSimplex } from './lp/useSimplex'
+export { useGrafico } from './lp/useGrafico'
 export { useSugerirModelo } from './lp/useSugerirModelo'
 export { useValidarModelo } from './lp/useValidarModelo'
 export { useModeloForm } from './lp/useModeloForm'

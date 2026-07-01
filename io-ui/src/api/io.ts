@@ -1,5 +1,5 @@
 import type {
-  ModeloLP, SolveResult, ChatResponse, ModeloSugeridoResponse, ValidacionResponse
+  ModeloLP, SolveResult, SolveResultGrafico, ChatResponse, ModeloSugeridoResponse, ValidacionResponse
 } from '@/types/io'
 
 const API_BASE = 'http://localhost:8080/api/v1'
@@ -14,6 +14,15 @@ async function handleResponse<T>(res: Response): Promise<T> {
 
 export async function resolverSimplex(modelo: ModeloLP): Promise<SolveResult> {
   const res = await fetch(`${API_BASE}/lp/simplex`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(modelo),
+  })
+  return handleResponse(res)
+}
+
+export async function resolverGrafico(modelo: ModeloLP): Promise<SolveResultGrafico> {
+  const res = await fetch(`${API_BASE}/lp/grafico`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(modelo),
