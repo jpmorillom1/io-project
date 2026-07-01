@@ -49,6 +49,11 @@ export function useChat() {
         store().setStatus('SOLVED')
         store().setUltimaActualizacionIA('resultado')
       }
+      if (res.resultadoGrafico) {
+        store().setResultadoGrafico(res.resultadoGrafico)
+        store().setStatus('SOLVED')
+        store().setUltimaActualizacionIA('resultado')
+      }
 
       const msgTutor: Mensaje = { rol: 'tutor', texto: res.respuesta, timestamp: Date.now() }
       setMensajes(prev => [...prev, msgTutor])

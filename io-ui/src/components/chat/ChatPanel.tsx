@@ -39,13 +39,13 @@ export function ChatPanel() {
       {/* Header */}
       <div className="px-4 py-3" style={{ background: 'var(--ij-bg-editor)', borderBottom: '1px solid var(--ij-bg-secondary)' }}>
         <div className="flex items-center gap-2.5">
-          <ShaderGlow target="circle" className="shrink-0 h-8 w-8" />
+          <ShaderGlow target="circle" className="shrink-0 h-5 w-5" />
           <div>
             <p
               className="text-sm font-semibold leading-tight"
               style={{ fontFamily: "'JetBrains Mono', monospace", color: 'var(--ij-teal)' }}
             >
-              Ío
+              Pivot
             </p>
             <div className="flex items-center gap-1.5 mt-0.5">
               <span
@@ -53,7 +53,7 @@ export function ChatPanel() {
                 style={{ background: 'var(--ij-green)' }}
               />
               <span className="text-xs" style={{ color: 'var(--ij-text-secondary)' }}>
-                Asistente socrático de IO
+                Asistente Pivot
               </span>
             </div>
           </div>
@@ -99,7 +99,7 @@ export function ChatPanel() {
           <div className="flex justify-start">
             <ShaderGlow target="pill">
               <Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: '#fff' }} />
-              Ío está escribiendo…
+              Pivot está escribiendo…
             </ShaderGlow>
           </div>
         )}
