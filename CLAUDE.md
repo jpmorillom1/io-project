@@ -18,8 +18,8 @@ un panel de configuración, y el sistema lo resuelve mostrando el **procedimient
 
 | Módulo | Estado | Algoritmos |
 |---|---|---|
-| Programación Lineal (LP) | **Simplex, Gran M, Dos Fases IMPLEMENTADOS** | Simplex (≤); Gran M, Dos Fases (≤/≥/=); análisis post-óptimo incluido. Dual, Gráfico — pendientes |
-| Transporte | TODO estructurado | Esquina Noroeste, Costo Mínimo, Vogel (VAM); MODI; Húngaro (asignación) |
+| Programación Lineal (LP) | **Simplex, Gran M, Dos Fases, Gráfico IMPLEMENTADOS** | Simplex (≤); Gran M, Dos Fases (≤/≥/=); Gráfico (2 variables); análisis post-óptimo incluido. Dual — pendiente |
+| Transporte | **Esquina Noroeste, Costo Mínimo, Vogel, MODI IMPLEMENTADOS** | Soluciones iniciales (NW/CostoMin/Vogel) + MODI (óptimo, compara las 3 iniciales); balanceo automático. Húngaro (asignación) — pendiente |
 | Redes | TODO estructurado | Dijkstra, Kruskal (+Union-Find), Edmonds-Karp |
 | PL Entera | TODO estructurado | Branch & Bound sobre Simplex; Gomory (opcional) |
 | Programación Dinámica | TODO estructurado | Tipos parametrizables (asignación/mochila/ruta por etapas) |
@@ -35,7 +35,8 @@ de un módulo TODO sin que se te indique explícitamente.
 
 - **Backend:** Spring Boot **4.1.0**, Java **21**
 - **Frontend:** React + Vite (en `io-ui/`, aún en desarrollo)
-- **IA:** LangChain4j **1.13.0** (ver nota crítica abajo)
+- **IA:** LangChain4j **1.13.0** + módulo `langchain4j-agentic` 1.13.0-beta23 para el
+  Human-in-the-Loop (ver nota crítica abajo)
 - **LLM:** OpenAI-compatible apuntado a **Groq** (`llama-3.3-70b-versatile`)
 - **Embeddings:** AllMiniLM-L6-V2 Quantized (local, sin API key)
 - **RAG vector store:** ChromaDB v2 API (Chroma 0.6+, **IMPLEMENTADO**)
@@ -116,32 +117,93 @@ válidos. Las excepciones se reservan para entradas malformadas.
 - `simplex/SimplexSolver` — Simplex estándar (solo LEQ, b≥0)
 - `granm/GranMSolver` — Gran M: LEQ/GEQ/EQ con penalidad M=1.000.000
 - `dosfases/DosFasesSolver` — Dos Fases: LEQ/GEQ/EQ
+- `grafico/GraficoSolver` — Método gráfico (2 variables); `SolucionGrafica`, `PuntoVertice`
+
+### domain/common/ — contrato compartido
+- `ModeloResoluble` — **interfaz marcador** que implementan `ModeloLP` y `ModeloTransporte`;
+  permite que la cadena HITL transporte modelos de distintos módulos sin acoplarse a un tipo
+
+### domain/transporte/
+- `ModeloTransporte` (record, `implements ModeloResoluble`) — `origenes`, `destinos`, `oferta`,
+  `demanda`, `costos` (matriz), `metodo` (`MetodoTransporte`)
+- `SolucionTransporte` — `asignaciones` (matriz), `costoTotal`, `comparativaInicial`, `metodoInicial`
+- `MetodoTransporte` (enum): ESQUINA_NOROESTE, COSTO_MINIMO, VOGEL, MODI
+- `Balanceador` — agrega origen/destino ficticio de costo 0 si Σoferta ≠ Σdemanda; valida dimensiones
+- `TransporteUtils` — costo total, snapshots de asignaciones, mapa `datos` de cada paso
+- `esquinanoroeste/EsquinaNoroesteSolver`, `costominimo/CostoMinimoSolver`, `vogel/VogelSolver`
+- `modi/ModiSolver` (+ `modi/CicloSteppingStone`) — corre los 3 iniciales, arranca del más
+  barato, optimiza con u/v + ciclo; maneja degeneración con celdas ε (union-find)
 
 ### application/lp/
 - `SimplexUseCase` / `SimplexService`
 - `GranMUseCase` / `GranMService`
 - `DosFasesUseCase` / `DosFasesService`
+- `GraficoUseCase` / `GraficoService`
+
+### application/transporte/
+- `TransporteUseCase` / `TransporteService` — fachada única: despacha al solver según `modelo.metodo()`
 
 ### infrastructure/lp/
 - `SimplexController` — `POST /api/v1/lp/simplex`
 - `GranMController` — `POST /api/v1/lp/gran-m`
 - `DosFasesController` — `POST /api/v1/lp/dos-fases`
+- `GraficoController` — `POST /api/v1/lp/grafico`
+
+### infrastructure/transporte/
+- `TransporteController` — `POST /api/v1/transporte/{esquina-noroeste,costo-minimo,vogel,modi}`
+  (cada endpoint fuerza su método; bind directo de `ModeloTransporte`)
 
 ### infrastructure/ai/
 - `TutorAiService` — interfaz conversacional, memoria en RAM por sesión (30 mensajes)
 - `ModeloAiService` — interfaz con structured output: `extraerModelo()` y `validarModelo()`
-- `AiConfig` — beans manuales via `AiServices.builder()`; registra las 5 tools
+- `AiConfig` — beans manuales via `AiServices.builder()`; registra las 7 tools;
+  envuelve el `ChatModel` en `RetryingChatModel` antes de pasarlo a los services
+- `RetryingChatModel` — decorador del `ChatModel`: reintenta hasta 3 veces cuando Groq
+  devuelve 400 `tool_use_failed` (el LLM generó la tool call con sintaxis malformada);
+  los reintentos van con temperatura 0.4 para romper el determinismo de temperature=0.
+  Si se agotan, `AiChatController` degrada con un mensaje amable (nunca el error crudo)
 - `ChatContextStore` — ThreadLocal que las tools usan para escribir datos estructurados;
-  el controlador los lee al terminar el chat y los incluye en `ChatResponse`
-- `tools/SimplexTool` — `@Tool resolverSimplex(...)` — solo LEQ
-- `tools/GranMTool` — `@Tool resolverGranM(...)` — LEQ/GEQ/EQ
-- `tools/DosFasesTool` — `@Tool resolverDosFases(...)` — LEQ/GEQ/EQ (método por defecto)
+  guarda también el `sesionId` del turno; el controlador lo lee al terminar el chat
+  y lo incluye en `ChatResponse`
+- `tools/SimplexTool` — `@Tool resolverSimplex(...)` — solo LEQ — **solicita aprobación HITL**
+- `tools/GranMTool` — `@Tool resolverGranM(...)` — LEQ/GEQ/EQ — **solicita aprobación HITL**
+- `tools/DosFasesTool` — `@Tool resolverDosFases(...)` — LEQ/GEQ/EQ (por defecto) — **solicita aprobación HITL**
+- `tools/GraficoTool` — `@Tool resolverGrafico(...)` — 2 variables — **solicita aprobación HITL**
+- `tools/TransporteTool` — `@Tool resolverTransporte(...)` — oferta/demanda/costos + método — **solicita aprobación HITL**
+  (la matriz de costos va como `List<FilaCostos>`, NO `List<List<Double>>`: LangChain4j 1.13.0 no
+  genera el esquema JSON de genéricos anidados — ver §9)
 - `tools/SugerirModeloTool` — `@Tool registrarModeloSugerido(...)`
 - `tools/ValidarModeloTool` — `@Tool registrarValidacion(...)`
-- `AiChatController` — tres endpoints AI; `/chat` inicializa el store, llama al tutor
-  y devuelve `ChatResponse` enriquecido con los datos que las tools escribieron
-- `dto/` — ChatRequest, ChatResponse (enriquecido: respuesta + 3 campos nullables),
-           SugerirModeloRequest, ModeloSugeridoResponse, ValidarModeloRequest, ValidacionResponse
+- `tools/SolicitudAprobacionHelper` — paso común: crea la solicitud HITL y avisa al LLM
+  (tipado a `ModeloResoluble`, sirve a LP y Transporte)
+- `AiChatController` — endpoints AI; `/chat` inicializa el store, llama al tutor
+  y devuelve `ChatResponse`; `/chat/aprobacion` recibe la decisión humana, reanuda el
+  workflow y reanuda al tutor con el desenlace en un mensaje `[SISTEMA]`
+- `dto/` — ChatRequest, ChatResponse (respuesta + 6 campos nullables: modeloSugerido, validacion,
+           resultado, resultadoGrafico, resultadoTransporte, solicitudAprobacion), SolicitudAprobacion
+           (modelo tipado `ModeloResoluble`), DecisionAprobacionRequest, SugerirModeloRequest,
+           ModeloSugeridoResponse, ValidarModeloRequest, ValidacionResponse
+
+### infrastructure/ai/hitl/ — Human-in-the-Loop (IMPLEMENTADO, langchain4j-agentic)
+Ningún solver se ejecuta desde el chat sin aprobación humana explícita — garantía
+estructural, no de prompt. Ver §7 para el flujo completo.
+- `ResolucionAprobadaWorkflow` — workflow agéntico secuencial: compuerta `HumanInTheLoop`
+  (publica un `PendingResponse` en el `AgenticScope`) → acción resolutora (se bloquea
+  leyendo la decisión; solo resuelve si `aprobado=true`)
+- `HitlConfig` — construye el workflow con `AgenticServices.sequenceBuilder(...)`;
+  ejecutor de hilos virtuales para las invocaciones bloqueadas; `@EnableScheduling`
+- `AprobacionHumanaService` — `solicitar()` (lanza el workflow en background),
+  `decidir()` (completa el PendingResponse "en caliente", espera el desenlace y evacúa
+  el scope), `limpiarExpiradas()` (@Scheduled: descarta solicitudes sin decisión >15 min)
+- `SolicitudAprobacionRegistry` — registro en RAM de solicitudes en vuelo
+- `ResolucionEjecutor` — único punto que invoca los use cases de resolución (LP + Transporte);
+  su record `Ejecucion` tiene 3 resultados (solo uno non-null: `resultado` tabular LP,
+  `resultadoGrafico`, o `resultadoTransporte`); genera el resumen textual que el tutor usa
+- `MetodoResolucion` (enum): SIMPLEX, GRAN_M, DOS_FASES, GRAFICO, **TRANSPORTE** (el submétodo
+  de transporte viaja dentro del `ModeloTransporte`, no como valores de enum aparte)
+- `DecisionAprobacion` (record)
+- Toda la cadena (`SolicitudAprobacion`, `Registry`, `AprobacionHumanaService`, `Workflow`)
+  está tipada a `ModeloResoluble`, no a `ModeloLP` — así admite cualquier módulo futuro
 
 ### infrastructure/web/
 - `GlobalExceptionHandler` — IllegalArgumentException → HTTP 400
@@ -155,6 +217,12 @@ válidos. Las excepciones se reservan para entradas malformadas.
 - `SimplexSolverTest` — 7 tests de dominio sin Spring (incluye holguras, precios sombra, rangos)
 - `GranMSolverTest` — 5 tests: LEQ+GEQ, todo-GEQ, EQ, infactible, pasos
 - `DosFasesSolverTest` — 5 tests: LEQ+GEQ, todo-GEQ, EQ, infactible, fases en orden
+- `domain/transporte/*` — `EsquinaNoroesteSolverTest`, `CostoMinimoSolverTest`, `VogelSolverTest`,
+  `ModiSolverTest` (óptimo conocido 240/30, itera θ>0 en el ejemplo Taha 102→100, degeneración,
+  comparativa, balanceo, validación), `CicloSteppingStoneTest`
+- `infrastructure/transporte/TransporteControllerTest` — controller + serialización Jackson
+- `infrastructure/ai/tools/TransporteToolSchemaTest` — el esquema JSON del `@Tool` se genera sin crash
+- `ResolucionAprobadaWorkflowTest` — HITL end-to-end (incluye caso TRANSPORTE devolviendo resultado)
 
 ---
 
@@ -165,11 +233,19 @@ válidos. Las excepciones se reservan para entradas malformadas.
 | POST | `/api/v1/lp/simplex` | Simplex estándar (solo ≤); devuelve pasos + análisis post-óptimo |
 | POST | `/api/v1/lp/gran-m` | Gran M (≤/≥/=); devuelve pasos + análisis post-óptimo |
 | POST | `/api/v1/lp/dos-fases` | Dos Fases (≤/≥/=); devuelve pasos + análisis post-óptimo |
+| POST | `/api/v1/lp/grafico` | Método gráfico (2 variables); región factible + vértices |
+| POST | `/api/v1/transporte/esquina-noroeste` | Solución básica inicial (esquina noroeste) |
+| POST | `/api/v1/transporte/costo-minimo` | Solución básica inicial (costo mínimo) |
+| POST | `/api/v1/transporte/vogel` | Solución básica inicial (Vogel/VAM) |
+| POST | `/api/v1/transporte/modi` | Óptimo por MODI (compara las 3 iniciales y optimiza) |
 | POST | `/api/v1/ai/chat` | Chat socrático con memoria de sesión |
+| POST | `/api/v1/ai/chat/aprobacion` | HITL: decisión humana (aprobar/rechazar) sobre la solicitud de resolución pendiente |
 | POST | `/api/v1/ai/sugerir-modelo` | Extrae `ModeloLP` desde lenguaje natural |
 | POST | `/api/v1/ai/validar-modelo` | Valida modelo del estudiante contra enunciado |
 
-Los tres solvers LP incluyen en `solution`: `valores`, `holguras`, `preciosSombra` y `rangosSensibilidad`.
+Los tres solvers LP tabulares incluyen en `solution`: `valores`, `holguras`, `preciosSombra` y
+`rangosSensibilidad`. Los de transporte devuelven `SolucionTransporte` (`asignaciones`, `costoTotal`,
+`comparativaInicial`, `metodoInicial`). Todos comparten el envoltorio `SolveResult<T>` (status + steps).
 
 Ver `docs/API_CONTRACT.md` para los cuerpos de request/response completos.
 
@@ -252,12 +328,34 @@ gradle bootRun
 
 ---
 
-El tutor NO da la solución directamente. Solo invoca `resolverSimplex` cuando:
+### Human-in-the-Loop (HITL) — aprobación humana antes de resolver
+
+El tutor NO da la solución directamente. Las tools de resolución solo se invocan cuando:
 1. El modelo está completamente validado
 2. El estudiante lo pide explícitamente
 
+Y además — desde la introducción del HITL — **invocar la tool NO resuelve**: la garantía
+"sin aprobación humana no corre ningún solver" es estructural (código), no de prompt.
+
+Flujo completo (dos turnos):
+1. Estudiante pide resolver → el tutor invoca `resolverX` → la tool crea una
+   `SolicitudAprobacion` y lanza en background el workflow agéntico, que queda
+   **bloqueado** en la compuerta `HumanInTheLoop` (un `PendingResponse` sin hilo de fondo).
+   `ChatResponse.solicitudAprobacion` lleva el modelo + método a la UI (botones Aprobar/Rechazar).
+2. La UI envía la decisión a `POST /api/v1/ai/chat/aprobacion`:
+   - **Aprobar** → se completa el `PendingResponse` → el workflow despierta y ejecuta el
+     solver → el tutor recibe el resumen en un mensaje `[SISTEMA]` y explica el resultado.
+     El `ChatResponse` trae `resultado`/`resultadoGrafico`/`resultadoTransporte` + la explicación.
+   - **Rechazar** → el solver no corre; el comentario del estudiante re-alimenta al tutor
+     (típicamente responde con un `modeloSugerido` corregido).
+
+Ciclo de vida: una nueva solicitud de la misma sesión reemplaza la anterior; las
+solicitudes sin decisión expiran a los 15 minutos (`limpiarExpiradas`, @Scheduled) y
+su `AgenticScope` se evacúa (`evictAgenticScope`).
+
 La memoria de sesión es **en RAM** (se pierde al reiniciar). La persistencia en PostgreSQL
-(tabla `sesion`) está pendiente de implementar con `ChatMemoryStore`.
+(tabla `sesion`) está pendiente de implementar con `ChatMemoryStore`. Las solicitudes HITL
+también viven en RAM — persistirlas requeriría un `AgenticScopeStore`.
 
 ---
 
@@ -282,6 +380,10 @@ La memoria de sesión es **en RAM** (se pierde al reiniciar). La persistencia en
 - ❌ No uses `@AiService` del starter para nuevos services — usa `AiServices.builder()`.
 - ❌ No modifiques los archivos `.md` del corpus sin re-ingestar (`RAG_REINGESTAR=true`).
 - ❌ No pongas el PDF del libro en `corpus/lp/` — va en la raíz de `corpus/` porque cubre todos los módulos.
+- ❌ No pases parámetros `@Tool` con **genéricos anidados** (`List<List<Double>>`, `Map<..,List<..>>`):
+  LangChain4j 1.13.0 falla al generar su esquema JSON (`ParameterizedTypeImpl cannot be cast to Class`)
+  y el bean `tutorAiService` no arranca. Envuelve la lista interna en un `record` (ver `TransporteTool.FilaCostos`).
+- ❌ No re-tipes la cadena HITL a un módulo concreto — usa `ModeloResoluble` (interfaz marcador en `domain/common`).
 
 ---
 
@@ -371,3 +473,6 @@ el método correcto por el tipo de restricciones del modelo.
 - `docs/MODULOS_IO.md` — especificación matemática de cada solver
 - `docs/FRONTEND_INTEGRATION.md` — guía completa para el agente React
 - `docs/RAG_IMPLEMENTATION_GUIDE.md` — (COMPLETADO ) guía de la implementación RAG
+- `docs/RETRY_LLM.md` — retry ante `tool_use_failed` de Groq (RetryingChatModel + fallback del controlador)
+- `docs/TRANSPORTE.md` — (COMPLETADO) módulo Transporte de punta a punta: dominio, MODI, HITL generalizado, grafo de red
+- `docs/GUIA_REDES.md` — **guía para la próxima sesión**: cómo implementar el módulo Redes reusando todo lo de Transporte

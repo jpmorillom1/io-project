@@ -31,11 +31,27 @@ io-api/src/main/java/jpap/dev/io_api/
 │       │   └── SimplexSolver.java                 Simplex estándar (solo LEQ, b>=0); usa SensibilidadCalculator
 │       ├── granm/
 │       │   └── GranMSolver.java                   Gran M — LEQ/GEQ/EQ; usa SensibilidadCalculator
-│       └── dosfases/
-│           └── DosFasesSolver.java                Dos Fases — LEQ/GEQ/EQ; usa SensibilidadCalculator
+│       ├── dosfases/
+│       │   └── DosFasesSolver.java                Dos Fases — LEQ/GEQ/EQ; usa SensibilidadCalculator
+│       └── grafico/
+│           ├── GraficoSolver.java                 Método gráfico (2 variables)
+│           ├── SolucionGrafica.java               record(valores, valorOptimo, vertices, region, xMax, yMax)
+│           └── PuntoVertice.java                  record(x, y, valorZ, esOptimo, etiqueta)
+│   common/
+│       └── ModeloResoluble.java                   interfaz marcador (la implementan ModeloLP y ModeloTransporte)
+│   transporte/                                     ✅ IMPLEMENTADO
+│       ├── ModeloTransporte.java                  record(origenes, destinos, oferta, demanda, costos, metodo) implements ModeloResoluble
+│       ├── SolucionTransporte.java                record(origenes, destinos, asignaciones, costoTotal, comparativaInicial, metodoInicial)
+│       ├── MetodoTransporte.java                  enum: ESQUINA_NOROESTE, COSTO_MINIMO, VOGEL, MODI
+│       ├── CostoPorMetodo.java                    record(metodo, costoInicial)
+│       ├── Balanceador.java                       agrega origen/destino ficticio si Σoferta≠Σdemanda; valida
+│       ├── TransporteUtils.java                   costo total, snapshots, mapa `datos` de cada paso
+│       ├── esquinanoroeste/EsquinaNoroesteSolver.java
+│       ├── costominimo/CostoMinimoSolver.java
+│       ├── vogel/VogelSolver.java
+│       └── modi/{ModiSolver.java, CicloSteppingStone.java}   corre los 3 iniciales, u/v + ciclo, degeneración
 │
-│   ⏳ transporte/ (TODO estructurado)
-│   ⏳ redes/      (TODO estructurado)
+│   ⏳ redes/      (TODO estructurado — ver docs/GUIA_REDES.md)
 │   ⏳ entera/     (TODO estructurado)
 │   ⏳ dinamica/   (TODO estructurado)
 │   ⏳ inventarios/(TODO estructurado)
@@ -47,13 +63,20 @@ io-api/src/main/java/jpap/dev/io_api/
 │       ├── GranMUseCase.java                      interfaz: resolver(ModeloLP) → SolveResult<SolucionLP>
 │       ├── GranMService.java                      @Service que delega a GranMSolver
 │       ├── DosFasesUseCase.java                   interfaz: resolver(ModeloLP) → SolveResult<SolucionLP>
-│       └── DosFasesService.java                   @Service que delega a DosFasesSolver
+│       ├── DosFasesService.java                   @Service que delega a DosFasesSolver
+│       ├── GraficoUseCase.java / GraficoService.java
+│   └── transporte/
+│       ├── TransporteUseCase.java                 interfaz: resolver(ModeloTransporte) → SolveResult<SolucionTransporte>
+│       └── TransporteService.java                 @Service; despacha al solver según modelo.metodo()
 │
 └── infrastructure/                                ◄ Spring, JPA, LangChain4j, REST
     ├── lp/
     │   ├── SimplexController.java                 POST /api/v1/lp/simplex
     │   ├── GranMController.java                   POST /api/v1/lp/gran-m
-    │   └── DosFasesController.java                POST /api/v1/lp/dos-fases
+    │   ├── DosFasesController.java                POST /api/v1/lp/dos-fases
+    │   └── GraficoController.java                 POST /api/v1/lp/grafico
+    ├── transporte/
+    │   └── TransporteController.java              POST /api/v1/transporte/{esquina-noroeste,costo-minimo,vogel,modi}
     │
     ├── ai/
     │   ├── TutorAiService.java                    interfaz conversacional (@MemoryId, @UserMessage)

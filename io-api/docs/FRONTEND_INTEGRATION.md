@@ -8,12 +8,22 @@
 
 ## Resumen de endpoints
 
+> **Estado del frontend (io-ui):** LP y **Transporte** están implementados de punta a punta.
+> El chat es **adaptativo**: vive en `context/ChatProvider` (montado en `AppShell`, sobrevive a
+> la navegación) y `moduloDeRespuesta()` cambia solo entre `/lp` y `/transporte` según lo que el
+> tutor detecte. La visualización de grafos usa `components/shared/NetworkGraph.tsx` (SVG genérico,
+> reutilizable). Para el próximo módulo (Redes) sigue `docs/GUIA_REDES.md` — reusa NetworkGraph y
+> amplía `moduloDeRespuesta()`.
+
 | Método | URL | Para qué |
 |--------|-----|----------|
 | POST | `/api/v1/lp/simplex` | Resolver PL — Simplex estándar (solo ≤) |
 | POST | `/api/v1/lp/gran-m` | Resolver PL — Gran M (≤, ≥, =) |
 | POST | `/api/v1/lp/dos-fases` | Resolver PL — Dos Fases (≤, ≥, =) |
-| POST | `/api/v1/ai/chat` | Chat socrático con el tutor Ío |
+| POST | `/api/v1/lp/grafico` | Resolver PL — Método gráfico (2 variables) |
+| POST | `/api/v1/transporte/{esquina-noroeste,costo-minimo,vogel,modi}` | Resolver Transporte (ver `API_CONTRACT.md`) |
+| POST | `/api/v1/ai/chat` | Chat socrático con el tutor Pivot |
+| POST | `/api/v1/ai/chat/aprobacion` | HITL: aprobar/rechazar la resolución pendiente |
 | POST | `/api/v1/ai/sugerir-modelo` | Extraer un `ModeloLP` desde texto libre |
 | POST | `/api/v1/ai/validar-modelo` | Validar el modelo del estudiante |
 
@@ -523,13 +533,29 @@ interface ChatRequest {
   mensaje: string
 }
 
-// Los tres campos inferiores son nullable — verificar siempre antes de usar
+// Los cinco campos inferiores son nullable — verificar siempre antes de usar
 interface ChatResponse {
   sesionId: string
   respuesta: string
   modeloSugerido: ModeloLP | null        // non-null → pre-llenar formulario
   validacion: ValidacionResponse | null  // non-null → mostrar errores inline
   resultado: SolveResult | null          // non-null → mostrar tableau
+  resultadoGrafico: SolveResult | null   // non-null → mostrar el gráfico (2 variables)
+  solicitudAprobacion: SolicitudAprobacion | null  // non-null → mostrar tarjeta Aprobar/Rechazar
+}
+
+// Human-in-the-Loop: el tutor quiere resolver y espera la aprobación del estudiante.
+// El solver NO corre hasta que se envíe la decisión a POST /ai/chat/aprobacion.
+interface SolicitudAprobacion {
+  solicitudId: string
+  metodo: 'SIMPLEX' | 'GRAN_M' | 'DOS_FASES' | 'GRAFICO'
+  modelo: ModeloLP
+}
+
+interface DecisionAprobacionRequest {
+  solicitudId: string
+  aprobado: boolean
+  comentario: string | null   // en un rechazo, explica qué corregir (re-alimenta al tutor)
 }
 
 interface ModeloSugeridoResponse {
@@ -588,6 +614,24 @@ async function enviarMensaje(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sesionId, mensaje }),
+  })
+  if (!res.ok) {
+    const err: ApiError = await res.json()
+    throw new Error(err.error)
+  }
+  return res.json()
+}
+
+// Decisión HITL sobre una solicitud de resolución pendiente.
+// Devuelve un ChatResponse: si aprobó, con resultado/resultadoGrafico + explicación
+// del tutor; si rechazó, normalmente con un modeloSugerido corregido.
+async function decidirAprobacion(
+  decision: DecisionAprobacionRequest
+): Promise<ChatResponse> {
+  const res = await fetch(`${API_BASE}/ai/chat/aprobacion`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(decision),
   })
   if (!res.ok) {
     const err: ApiError = await res.json()

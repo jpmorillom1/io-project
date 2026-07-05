@@ -201,7 +201,38 @@ lee y actualiza el formulario y/o tableau automáticamente.
 }
 ```
 
-**Response — cuando valida y resuelve en el mismo turno:**
+**Response — cuando el tutor quiere resolver (Human-in-the-Loop, `solicitudAprobacion` non-null):**
+
+El solver NO se ejecuta todavía. La UI debe mostrar el modelo y el método con botones
+**Aprobar / Rechazar**, y enviar la decisión a `POST /api/v1/ai/chat/aprobacion`.
+
+```json
+{
+  "sesionId": "a3f9c1d2-7b8e-4f1a-9c2d-0e5f6a7b8c9d",
+  "respuesta": "Envié la solicitud para resolver con Simplex estándar. Revisa el modelo y confírmalo con el botón Aprobar.",
+  "modeloSugerido": null,
+  "validacion": { "esValido": true, "analisis": "...", "erroresEncontrados": [], "sugerencias": [], "modeloCorregido": null },
+  "resultado": null,
+  "resultadoGrafico": null,
+  "solicitudAprobacion": {
+    "solicitudId": "7c1e...uuid",
+    "metodo": "SIMPLEX",
+    "modelo": {
+      "variables": ["x1", "x2"],
+      "objetivo": { "coeficientes": [50.0, 30.0], "tipo": "MAXIMIZAR" },
+      "restricciones": [
+        { "coeficientes": [20.0, 10.0], "tipo": "LEQ", "rhs": 400.0 },
+        { "coeficientes": [30.0, 15.0], "tipo": "LEQ", "rhs": 450.0 }
+      ]
+    }
+  }
+}
+```
+
+`metodo` ∈ `SIMPLEX | GRAN_M | DOS_FASES | GRAFICO`. Una solicitud expira a los 15
+minutos sin decisión; una nueva solicitud de la misma sesión reemplaza la anterior.
+
+**Response — con resultado del solver (solo llega vía `/chat/aprobacion` tras aprobar):**
 ```json
 {
   "sesionId": "a3f9c1d2-7b8e-4f1a-9c2d-0e5f6a7b8c9d",
@@ -241,6 +272,43 @@ lee y actualiza el formulario y/o tableau automáticamente.
 `resultado.solution` también puede ser `null` si `status` es `NO_ACOTADO` o `INFACTIBLE`.
 
 El `sesionId` se mantiene en RAM. Se pierde al reiniciar el servidor.
+
+---
+
+### `POST /api/v1/ai/chat/aprobacion`
+
+**Human-in-the-Loop.** Comunica la decisión del estudiante sobre la solicitud de
+resolución pendiente (`ChatResponse.solicitudAprobacion`). Es la única vía por la que
+un solver se ejecuta desde el chat: la compuerta es estructural, no depende del LLM.
+
+- **Aprobar** → el backend ejecuta el solver, informa al tutor y devuelve un
+  `ChatResponse` con `resultado` (o `resultadoGrafico`) y la explicación del tutor.
+- **Rechazar** → el solver no corre; el `comentario` re-alimenta al tutor, que retoma
+  la conversación (típicamente proponiendo un `modeloSugerido` corregido).
+
+**Request:**
+```json
+{
+  "solicitudId": "7c1e...uuid",
+  "aprobado": true,
+  "comentario": null
+}
+```
+
+En un rechazo, `comentario` es opcional pero recomendado — el tutor lo usa para corregir:
+```json
+{
+  "solicitudId": "7c1e...uuid",
+  "aprobado": false,
+  "comentario": "la ganancia de las mesas es 60, no 50"
+}
+```
+
+**Response:** un `ChatResponse` normal (mismo `sesionId` de la conversación). Tras
+aprobar, `resultado`/`resultadoGrafico` traen el `SolveResult` completo y `respuesta`
+la explicación del tutor. Tras rechazar, suele venir `modeloSugerido` con la corrección.
+
+**Errores:** `400` si `solicitudId` no existe, ya fue decidida o expiró (15 min).
 
 ---
 
@@ -326,14 +394,62 @@ Detecta coeficientes incorrectos, restricciones faltantes, tipo de optimización
 
 ---
 
+## Transporte (IMPLEMENTADO)
+
+Cuatro endpoints, uno por método. Todos aceptan el mismo body `ModeloTransporte` y
+devuelven `SolveResult<SolucionTransporte>`. Los tres primeros dan una solución básica
+inicial; `modi` da el óptimo.
+
+```
+POST /api/v1/transporte/esquina-noroeste
+POST /api/v1/transporte/costo-minimo
+POST /api/v1/transporte/vogel
+POST /api/v1/transporte/modi
+```
+
+**Request** (`ModeloTransporte`) — `costos` es fila por origen, columna por destino:
+```json
+{
+  "origenes": ["O1", "O2", "O3"],
+  "destinos": ["D1", "D2", "D3"],
+  "oferta":   [20, 30, 25],
+  "demanda":  [30, 25, 20],
+  "costos": [[4, 6, 8], [6, 4, 2], [2, 8, 6]]
+}
+```
+Si Σoferta ≠ Σdemanda el backend balancea solo (agrega un origen/destino `"Ficticio"` de costo 0).
+
+**Response** — `solution` es `SolucionTransporte`:
+```json
+{
+  "status": "OPTIMO",
+  "solution": {
+    "origenes": ["O1", "O2", "O3"],
+    "destinos": ["D1", "D2", "D3"],
+    "asignaciones": [[20,0,0],[0,10,20],[10,15,0]],
+    "costoTotal": 240,
+    "comparativaInicial": [
+      { "metodo": "ESQUINA_NOROESTE", "costoInicial": 380 },
+      { "metodo": "COSTO_MINIMO",     "costoInicial": 240 },
+      { "metodo": "VOGEL",            "costoInicial": 240 }
+    ],
+    "metodoInicial": "COSTO_MINIMO"
+  },
+  "steps": [ /* cada paso: datos.tipo="TRANSPORTE", origenes, destinos, costos, oferta, demanda,
+                asignaciones (null=celda no básica); en MODI además u, v, costosReducidos,
+                celdaEntrante, celdaSaliente, ciclo, theta */ ]
+}
+```
+`comparativaInicial` y `metodoInicial` solo se rellenan en `modi` (null en los iniciales).
+
+---
+
 ## Módulos pendientes (devuelven 404 por ahora)
 
 ```
 POST /api/v1/lp/dual          → pendiente
-POST /api/v1/lp/grafico       → ✅ IMPLEMENTADO (solo 2 variables, LEQ/GEQ/EQ)
 
-POST /api/v1/transporte/resolver   → pendiente
-POST /api/v1/redes/resolver        → pendiente
+POST /api/v1/redes/resolver        → pendiente (ver docs/GUIA_REDES.md)
 
 POST /api/v1/entera/resolver       → pendiente
 POST /api/v1/dinamica/resolver     → pendiente
