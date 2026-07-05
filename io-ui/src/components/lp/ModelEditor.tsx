@@ -1,10 +1,11 @@
 import { useState, type CSSProperties } from 'react'
-import { useModeloForm, useValidarModelo, useSimplex, useGrafico } from '@/hooks'
+import { useModeloForm, useValidarModelo, useResolverLP, useGrafico } from '@/hooks'
 import { useWorkspaceStore } from '@/store/useWorkspaceStore'
 import { Button } from '@/components/ui/button'
 import { ValidationFeedback } from './ValidationFeedback'
 import { Trash2, Plus, Loader2, BotMessageSquare } from 'lucide-react'
 import { ShaderGlow } from '@/components/ui/ShaderGlow'
+import { detectarMetodoLP } from '@/lib/lp/detectarMetodo'
 import type { TipoObjetivo, TipoRestriccion } from '@/types/io'
 
 const MONO: CSSProperties = { fontFamily: "'JetBrains Mono', monospace", fontSize: '13px' }
@@ -12,7 +13,7 @@ const MONO: CSSProperties = { fontFamily: "'JetBrains Mono', monospace", fontSiz
 export function ModelEditor() {
   const form = useModeloForm()
   const { validar, isValidating, errores, sugerencias } = useValidarModelo()
-  const { resolver, isSolving, error: errorSolver } = useSimplex()
+  const { resolver, isSolving, error: errorSolver } = useResolverLP()
   const { resolver: graficar, isSolving: isGraficando, error: errorGrafico } = useGrafico()
   const descripcionProblema = useWorkspaceStore(s => s.descripcionProblema)
   const status = useWorkspaceStore(s => s.status)
@@ -22,6 +23,7 @@ export function ModelEditor() {
   const modelo = form.modelo
   const disabled = isChatBusy || isSolving || isGraficando || isValidating
   const puedeGraficar = modelo.variables.length === 2
+  const metodoDetectado = detectarMetodoLP(modelo)
 
   function numInput(value: number, onChange: (v: number) => void) {
     return (
@@ -204,9 +206,17 @@ export function ModelEditor() {
           {isGraficando && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
           Graficar
         </Button>
-        <Button onClick={() => resolver(modelo)} disabled={disabled}>
+        <Button
+          onClick={() => resolver(modelo)}
+          disabled={disabled}
+          title={
+            metodoDetectado === 'DOS_FASES'
+              ? 'Se detectaron restricciones ≥ o = — se resolverá con Dos Fases'
+              : undefined
+          }
+        >
           {isSolving && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
-          Resolver →
+          {metodoDetectado === 'DOS_FASES' ? 'Resolver (Dos Fases) →' : 'Resolver →'}
         </Button>
       </div>
     </div>

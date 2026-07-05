@@ -1,24 +1,25 @@
 import { useRef, useEffect, useState } from 'react'
 import { useChat } from '@/hooks'
 import { ChatBubble } from './ChatBubble'
+import { ApprovalCard } from './ApprovalCard'
 import { Button } from '@/components/ui/button'
 import { Loader2, Send } from 'lucide-react'
 import { ShaderGlow } from '@/components/ui/ShaderGlow'
 
 const PROMPTS_EJEMPLO = [
   'Quiero maximizar la ganancia produciendo dos productos con restricciones de recursos...',
-  'Tengo un problema de dieta: minimizar costos cumpliendo requerimientos nutricionales...',
+  'Tengo un problema de transporte: 3 plantas con cierta oferta abastecen 4 ciudades con demanda, minimizando el costo de envío...',
 ]
 
 export function ChatPanel() {
-  const { mensajes, enviar, isSending, error } = useChat()
+  const { mensajes, enviar, decidir, solicitud, isSending, error } = useChat()
   const [input, setInput] = useState('')
   const [inputFocused, setInputFocused] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [mensajes, isSending])
+  }, [mensajes, isSending, solicitud])
 
   async function handleEnviar() {
     if (!input.trim() || isSending) return
@@ -93,6 +94,10 @@ export function ChatPanel() {
               <ChatBubble key={i} mensaje={m} />
             ))}
           </>
+        )}
+
+        {solicitud && !isSending && (
+          <ApprovalCard solicitud={solicitud} onDecidir={decidir} />
         )}
 
         {isSending && (

@@ -1,21 +1,24 @@
 import { useState } from 'react'
-import { resolverSimplex } from '@/api/io'
+import { resolverTransporte } from '@/api/io'
 import { useWorkspaceStore } from '@/store/useWorkspaceStore'
-import type { ModeloLP } from '@/types/io'
+import type { ModeloTransporte } from '@/types/io'
 
-export function useSimplex() {
+/** Resuelve un modelo de transporte contra el backend y lo vuelca en el store global. */
+export function useResolverTransporte() {
   const [isSolving, setIsSolving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const setResultado = useWorkspaceStore(s => s.setResultado)
+  const setModeloTransporte = useWorkspaceStore(s => s.setModeloTransporte)
+  const setResultadoTransporte = useWorkspaceStore(s => s.setResultadoTransporte)
   const setStatus = useWorkspaceStore(s => s.setStatus)
 
-  async function resolver(modelo: ModeloLP) {
+  async function resolver(modelo: ModeloTransporte) {
     setIsSolving(true)
     setError(null)
     setStatus('SOLVING')
     try {
-      const result = await resolverSimplex(modelo)
-      setResultado(result)
+      const result = await resolverTransporte(modelo)
+      setModeloTransporte(modelo)
+      setResultadoTransporte(result)
       setStatus('SOLVED')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al resolver')

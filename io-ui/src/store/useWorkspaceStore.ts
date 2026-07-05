@@ -1,5 +1,8 @@
 import { create } from 'zustand'
-import type { ModeloLP, SolveResult, SolveResultGrafico, WorkspaceStatus, ValidacionResponse } from '@/types/io'
+import type {
+  ModeloLP, SolveResult, SolveResultGrafico, WorkspaceStatus, ValidacionResponse,
+  ModeloTransporte, SolveResultTransporte,
+} from '@/types/io'
 
 type ActualizacionIA = 'modelo' | 'validacion' | 'resultado' | null
 
@@ -12,6 +15,9 @@ interface WorkspaceStore {
   sugerenciasValidacion: string[]
   resultado: SolveResult | null
   resultadoGrafico: SolveResultGrafico | null
+  modeloTransporte: ModeloTransporte | null
+  modeloTransporteGrafico: ModeloTransporte | null
+  resultadoTransporte: SolveResultTransporte | null
   validado: boolean
   isChatBusy: boolean
   ultimaActualizacionIA: ActualizacionIA
@@ -23,6 +29,9 @@ interface WorkspaceStore {
   setErroresValidacion: (e: string[]) => void
   setResultado: (r: SolveResult | null) => void
   setResultadoGrafico: (r: SolveResultGrafico | null) => void
+  setModeloTransporte: (m: ModeloTransporte | null) => void
+  setModeloTransporteGrafico: (m: ModeloTransporte | null) => void
+  setResultadoTransporte: (r: SolveResultTransporte | null) => void
   setValidado: (v: boolean) => void
   resetResultado: () => void
   setValidacion: (v: ValidacionResponse) => void
@@ -39,6 +48,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
   sugerenciasValidacion: [],
   resultado: null,
   resultadoGrafico: null,
+  modeloTransporte: null,
+  modeloTransporteGrafico: null,
+  resultadoTransporte: null,
   validado: false,
   isChatBusy: false,
   ultimaActualizacionIA: null,
@@ -50,8 +62,11 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
   setErroresValidacion: (erroresValidacion) => set({ erroresValidacion }),
   setResultado: (resultado) => set({ resultado }),
   setResultadoGrafico: (resultadoGrafico) => set({ resultadoGrafico }),
+  setModeloTransporte: (modeloTransporte) => set({ modeloTransporte }),
+  setModeloTransporteGrafico: (modeloTransporteGrafico) => set({ modeloTransporteGrafico }),
+  setResultadoTransporte: (resultadoTransporte) => set({ resultadoTransporte }),
   setValidado: (validado) => set({ validado }),
-  resetResultado: () => set({ resultado: null, resultadoGrafico: null, status: 'EDITING', validado: false }),
+  resetResultado: () => set({ resultado: null, resultadoGrafico: null, resultadoTransporte: null, status: 'EDITING', validado: false }),
   setValidacion: (v) => set({
     erroresValidacion: v.erroresEncontrados,
     sugerenciasValidacion: v.sugerencias,

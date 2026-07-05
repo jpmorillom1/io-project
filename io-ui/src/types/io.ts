@@ -81,6 +81,27 @@ export interface ChatResponse {
   validacion: ValidacionResponse | null
   resultado: SolveResult | null
   resultadoGrafico: SolveResultGrafico | null
+  resultadoTransporte: SolveResultTransporte | null
+  solicitudAprobacion: SolicitudAprobacion | null
+}
+
+// ── Human-in-the-Loop ────────────────────────────────────────────────────────
+// El tutor quiere resolver y espera la aprobación del estudiante.
+// El solver NO corre hasta enviar la decisión a POST /ai/chat/aprobacion.
+
+export type MetodoResolucion = 'SIMPLEX' | 'GRAN_M' | 'DOS_FASES' | 'GRAFICO' | 'TRANSPORTE'
+
+export interface SolicitudAprobacion {
+  solicitudId: string
+  metodo: MetodoResolucion
+  // El modelo es genérico: ModeloLP para métodos LP/gráfico, ModeloTransporte para TRANSPORTE.
+  modelo: ModeloLP | ModeloTransporte
+}
+
+export interface DecisionAprobacionRequest {
+  solicitudId: string
+  aprobado: boolean
+  comentario: string | null   // en un rechazo, explica qué corregir (re-alimenta al tutor)
 }
 
 export interface ModeloSugeridoResponse {
@@ -172,4 +193,75 @@ export interface SolveResultGrafico {
   status: SolveStatus
   solution: SolucionGrafica | null
   steps: SolveStepGrafico[]
+}
+
+// ── Transporte ──────────────────────────────────────────────────────────────
+
+export type MetodoTransporte = 'ESQUINA_NOROESTE' | 'COSTO_MINIMO' | 'VOGEL' | 'MODI'
+
+export interface ModeloTransporte {
+  origenes: string[]
+  destinos: string[]
+  oferta: number[]
+  demanda: number[]
+  costos: number[][]        // filas = orígenes, columnas = destinos
+  metodo: MetodoTransporte
+}
+
+export interface CostoPorMetodo {
+  metodo: MetodoTransporte
+  costoInicial: number
+}
+
+export interface SolucionTransporte {
+  origenes: string[]        // incluye "Ficticio" si hubo balanceo
+  destinos: string[]
+  asignaciones: number[][]  // cantidad enviada por ruta (0 si no se usa)
+  costoTotal: number
+  comparativaInicial: CostoPorMetodo[] | null   // solo MODI
+  metodoInicial: MetodoTransporte | null        // solo MODI
+}
+
+// Cada paso de transporte lleva la tabla y datos específicos del método.
+// `asignaciones` usa null en celdas no básicas (rutas sin uso) durante los pasos.
+export interface StepDatosTransporte {
+  tipo: 'TRANSPORTE'
+  origenes: string[]
+  destinos: string[]
+  costos: number[][]
+  oferta: number[]
+  demanda: number[]
+  asignaciones: (number | null)[][]
+  celda?: [number, number]
+  cantidad?: number
+  costoTotal?: number
+  celdasBasicas?: number
+  // Vogel
+  penalizacionesFila?: (number | null)[]
+  penalizacionesColumna?: (number | null)[]
+  lineaElegida?: string
+  // MODI
+  u?: number[]
+  v?: number[]
+  costosReducidos?: (number | null)[][]
+  celdaEntrante?: [number, number]
+  celdaSaliente?: [number, number]
+  ciclo?: [number, number][]
+  theta?: number
+  comparativaInicial?: Array<{ metodo: string; costoInicial: number }>
+  metodoInicial?: string
+  status?: SolveStatus
+}
+
+export interface SolveStepTransporte {
+  numero: number
+  titulo: string
+  descripcion: string
+  datos: StepDatosTransporte
+}
+
+export interface SolveResultTransporte {
+  status: SolveStatus
+  solution: SolucionTransporte | null
+  steps: SolveStepTransporte[]
 }

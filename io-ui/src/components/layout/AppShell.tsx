@@ -2,6 +2,7 @@ import { Outlet } from 'react-router'
 import { ModuleRail } from './ModuleRail'
 import { TopBar } from './TopBar'
 import { Logo } from './Logo'
+import { ChatProvider } from '@/context/ChatProvider'
 
 const RAIL_WIDTH = '44px'
 
@@ -25,13 +26,17 @@ export function AppShell() {
         <TopBar />
       </div>
 
-      {/* Fila inferior: rail de módulos + contenido */}
-      <div className="flex flex-1 overflow-hidden">
-        <ModuleRail />
-        <div className="flex-1 h-full overflow-hidden">
-          <Outlet />
+      {/* Fila inferior: rail de módulos + contenido.
+          El chat vive en un contexto por encima de las rutas: cambiar de módulo
+          (manual o adaptativo) NO reinicia la conversación. */}
+      <ChatProvider>
+        <div className="flex flex-1 overflow-hidden">
+          <ModuleRail />
+          <div className="flex-1 h-full overflow-hidden">
+            <Outlet />
+          </div>
         </div>
-      </div>
+      </ChatProvider>
     </div>
   )
 }
