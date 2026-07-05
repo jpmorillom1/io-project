@@ -4,15 +4,20 @@ import jpap.dev.io_api.domain.common.SolveResult;
 import jpap.dev.io_api.domain.lp.ModeloLP;
 import jpap.dev.io_api.domain.lp.SolucionLP;
 import jpap.dev.io_api.domain.lp.grafico.SolucionGrafica;
+import jpap.dev.io_api.domain.transporte.SolucionTransporte;
 
 /**
- * Respuesta del endpoint POST /api/v1/ai/chat.
+ * Respuesta de POST /api/v1/ai/chat y POST /api/v1/ai/chat/aprobacion.
  *
- * - respuesta:          siempre presente — texto conversacional del tutor
- * - modeloSugerido:     non-null cuando el tutor invocó registrarModeloSugerido
- * - validacion:         non-null cuando el tutor invocó registrarValidacion
- * - resultado:          non-null cuando el tutor resolvió con Simplex, GranM o DosFases
- * - resultadoGrafico:   non-null cuando el tutor resolvió con el método gráfico (2 variables)
+ * - respuesta:            siempre presente — texto conversacional del tutor
+ * - modeloSugerido:       non-null cuando el tutor invocó registrarModeloSugerido
+ * - validacion:           non-null cuando el tutor invocó registrarValidacion
+ * - resultado:            non-null cuando un solver tabular (Simplex/GranM/DosFases) se ejecutó
+ *                         tras la aprobación humana
+ * - resultadoGrafico:     non-null cuando el método gráfico se ejecutó tras la aprobación humana
+ * - resultadoTransporte:  non-null cuando un método de transporte se ejecutó tras la aprobación humana
+ * - solicitudAprobacion:  non-null cuando el tutor quiere resolver y espera la aprobación del
+ *                         estudiante — la UI debe mostrar el modelo con botones Aprobar/Rechazar
  */
 public record ChatResponse(
         String sesionId,
@@ -20,5 +25,7 @@ public record ChatResponse(
         ModeloLP modeloSugerido,
         ValidacionResponse validacion,
         SolveResult<SolucionLP> resultado,
-        SolveResult<SolucionGrafica> resultadoGrafico
+        SolveResult<SolucionGrafica> resultadoGrafico,
+        SolveResult<SolucionTransporte> resultadoTransporte,
+        SolicitudAprobacion solicitudAprobacion
 ) {}

@@ -9,6 +9,7 @@ import jpap.dev.io_api.infrastructure.ai.tools.GraficoTool;
 import jpap.dev.io_api.infrastructure.ai.tools.GranMTool;
 import jpap.dev.io_api.infrastructure.ai.tools.SimplexTool;
 import jpap.dev.io_api.infrastructure.ai.tools.SugerirModeloTool;
+import jpap.dev.io_api.infrastructure.ai.tools.TransporteTool;
 import jpap.dev.io_api.infrastructure.ai.tools.ValidarModeloTool;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -41,13 +42,14 @@ public class AiConfig {
                                          GranMTool granMTool,
                                          DosFasesTool dosFasesTool,
                                          GraficoTool graficoTool,
+                                         TransporteTool transporteTool,
                                          ContentRetriever contentRetriever)
             throws IOException {
         String systemPrompt = cargarPrompt("classpath:prompts/tutor_system_prompt.txt");
         return AiServices.builder(TutorAiService.class)
-                .chatModel(chatModel)
+                .chatModel(new RetryingChatModel(chatModel))
                 .chatMemoryProvider(memId -> MessageWindowChatMemory.withMaxMessages(30))
-                .tools(simplexTool, sugerirTool, validarTool, granMTool, dosFasesTool, graficoTool)
+                .tools(simplexTool, sugerirTool, validarTool, granMTool, dosFasesTool, graficoTool, transporteTool)
                 .systemMessageProvider(memId -> systemPrompt)
                 .contentRetriever(contentRetriever)
                 .build();
@@ -60,7 +62,7 @@ public class AiConfig {
     @Bean
     public ModeloAiService modeloAiService(ChatModel chatModel) {
         return AiServices.builder(ModeloAiService.class)
-                .chatModel(chatModel)
+                .chatModel(new RetryingChatModel(chatModel))
                 .build();
     }
 

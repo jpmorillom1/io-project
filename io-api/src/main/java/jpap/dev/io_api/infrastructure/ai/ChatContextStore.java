@@ -4,6 +4,8 @@ import jpap.dev.io_api.domain.common.SolveResult;
 import jpap.dev.io_api.domain.lp.ModeloLP;
 import jpap.dev.io_api.domain.lp.SolucionLP;
 import jpap.dev.io_api.domain.lp.grafico.SolucionGrafica;
+import jpap.dev.io_api.domain.transporte.SolucionTransporte;
+import jpap.dev.io_api.infrastructure.ai.dto.SolicitudAprobacion;
 import jpap.dev.io_api.infrastructure.ai.dto.ValidacionResponse;
 import org.springframework.stereotype.Component;
 
@@ -19,8 +21,10 @@ public class ChatContextStore {
 
     private final ThreadLocal<DatosRespuesta> local = new ThreadLocal<>();
 
-    public void iniciar() {
-        local.set(new DatosRespuesta());
+    public void iniciar(String sesionId) {
+        DatosRespuesta datos = new DatosRespuesta();
+        datos.sesionId = sesionId;
+        local.set(datos);
     }
 
     public DatosRespuesta obtener() {
@@ -33,9 +37,12 @@ public class ChatContextStore {
     }
 
     public static class DatosRespuesta {
+        public String sesionId;   // lo escribe el controlador; las tools lo usan para crear solicitudes HITL
         public ModeloLP modeloSugerido;
         public ValidacionResponse validacion;
         public SolveResult<SolucionLP> resultado;
         public SolveResult<SolucionGrafica> resultadoGrafico;
+        public SolveResult<SolucionTransporte> resultadoTransporte;
+        public SolicitudAprobacion solicitudAprobacion;
     }
 }

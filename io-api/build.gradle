@@ -47,6 +47,8 @@ dependencies {
 	implementation 'dev.langchain4j:langchain4j-embeddings-all-minilm-l6-v2-q:1.13.0-beta23'
 	// LangChain4j — parser PDF via Apache PDFBox
 	implementation 'dev.langchain4j:langchain4j-document-parser-apache-pdfbox:1.13.0-beta23'
+	// LangChain4j — módulo agéntico: HumanInTheLoop + PendingResponse para aprobación humana
+	implementation 'dev.langchain4j:langchain4j-agentic:1.13.0-beta23'
 }
 
 // Expone nombres de parámetros en bytecode → Jackson puede deserializar records sin @JsonProperty
