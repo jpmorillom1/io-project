@@ -7,11 +7,14 @@ package jpap.dev.io_api.infrastructure.ai.hitl;
  *
  * TRANSPORTE agrupa los cuatro métodos de transporte; el submétodo concreto
  * (Esquina Noroeste, Costo Mínimo, Vogel o MODI) viaja dentro del ModeloTransporte.
+ * REDES agrupa los cinco problemas de redes; el submétodo concreto (Dijkstra,
+ * Kruskal, Edmonds-Karp, Flujo de Costo Mínimo o Asignación) viaja dentro del ModeloRed.
  */
 public enum MetodoResolucion {
     SIMPLEX,
     GRAN_M,
     DOS_FASES,
     GRAFICO,
-    TRANSPORTE
+    TRANSPORTE,
+    REDES
 }

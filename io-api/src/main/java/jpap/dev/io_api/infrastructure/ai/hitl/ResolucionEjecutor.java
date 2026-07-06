@@ -4,6 +4,7 @@ import jpap.dev.io_api.application.lp.DosFasesUseCase;
 import jpap.dev.io_api.application.lp.GraficoUseCase;
 import jpap.dev.io_api.application.lp.GranMUseCase;
 import jpap.dev.io_api.application.lp.SimplexUseCase;
+import jpap.dev.io_api.application.redes.RedUseCase;
 import jpap.dev.io_api.application.transporte.TransporteUseCase;
 import jpap.dev.io_api.domain.common.ModeloResoluble;
 import jpap.dev.io_api.domain.common.SolveResult;
@@ -13,6 +14,9 @@ import jpap.dev.io_api.domain.lp.ModeloLP;
 import jpap.dev.io_api.domain.lp.SolucionLP;
 import jpap.dev.io_api.domain.lp.grafico.PuntoVertice;
 import jpap.dev.io_api.domain.lp.grafico.SolucionGrafica;
+import jpap.dev.io_api.domain.redes.Arista;
+import jpap.dev.io_api.domain.redes.ModeloRed;
+import jpap.dev.io_api.domain.redes.SolucionRed;
 import jpap.dev.io_api.domain.transporte.CostoPorMetodo;
 import jpap.dev.io_api.domain.transporte.MetodoTransporte;
 import jpap.dev.io_api.domain.transporte.ModeloTransporte;
@@ -39,28 +43,32 @@ public class ResolucionEjecutor {
     private final DosFasesUseCase dosFasesUseCase;
     private final GraficoUseCase graficoUseCase;
     private final TransporteUseCase transporteUseCase;
+    private final RedUseCase redUseCase;
 
     public ResolucionEjecutor(SimplexUseCase simplexUseCase,
                               GranMUseCase granMUseCase,
                               DosFasesUseCase dosFasesUseCase,
                               GraficoUseCase graficoUseCase,
-                              TransporteUseCase transporteUseCase) {
+                              TransporteUseCase transporteUseCase,
+                              RedUseCase redUseCase) {
         this.simplexUseCase = simplexUseCase;
         this.granMUseCase = granMUseCase;
         this.dosFasesUseCase = dosFasesUseCase;
         this.graficoUseCase = graficoUseCase;
         this.transporteUseCase = transporteUseCase;
+        this.redUseCase = redUseCase;
     }
 
     /**
-     * Resultado de una ejecución aprobada. Solo uno de los tres resultados es non-null:
-     * resultado (tabular LP: Simplex/GranM/DosFases), resultadoGrafico (método gráfico)
-     * o resultadoTransporte (métodos de transporte).
+     * Resultado de una ejecución aprobada. Solo uno de los cuatro resultados es non-null:
+     * resultado (tabular LP: Simplex/GranM/DosFases), resultadoGrafico (método gráfico),
+     * resultadoTransporte (métodos de transporte) o resultadoRed (problemas de redes).
      */
     public record Ejecucion(
             SolveResult<SolucionLP> resultado,
             SolveResult<SolucionGrafica> resultadoGrafico,
             SolveResult<SolucionTransporte> resultadoTransporte,
+            SolveResult<SolucionRed> resultadoRed,
             String resumenParaTutor
     ) {}
 
@@ -70,14 +78,20 @@ public class ResolucionEjecutor {
         if (metodo == MetodoResolucion.TRANSPORTE) {
             ModeloTransporte mt = (ModeloTransporte) modelo;
             SolveResult<SolucionTransporte> resultado = transporteUseCase.resolver(mt);
-            return new Ejecucion(null, null, resultado, formatearTransporte(resultado, mt));
+            return new Ejecucion(null, null, resultado, null, formatearTransporte(resultado, mt));
+        }
+
+        if (metodo == MetodoResolucion.REDES) {
+            ModeloRed mr = (ModeloRed) modelo;
+            SolveResult<SolucionRed> resultado = redUseCase.resolver(mr);
+            return new Ejecucion(null, null, null, resultado, formatearRed(resultado, mr));
         }
 
         ModeloLP mlp = (ModeloLP) modelo;
 
         if (metodo == MetodoResolucion.GRAFICO) {
             SolveResult<SolucionGrafica> resultado = graficoUseCase.resolver(mlp);
-            return new Ejecucion(null, resultado, null, formatearGrafico(resultado));
+            return new Ejecucion(null, resultado, null, null, formatearGrafico(resultado));
         }
 
         SolveResult<SolucionLP> resultado = switch (metodo) {
@@ -86,8 +100,9 @@ public class ResolucionEjecutor {
             case DOS_FASES -> dosFasesUseCase.resolver(mlp);
             case GRAFICO -> throw new IllegalStateException("cubierto arriba");
             case TRANSPORTE -> throw new IllegalStateException("cubierto arriba");
+            case REDES -> throw new IllegalStateException("cubierto arriba");
         };
-        return new Ejecucion(resultado, null, null, formatearTabular(resultado, metodo));
+        return new Ejecucion(resultado, null, null, null, formatearTabular(resultado, metodo));
     }
 
     // ─── formato para el tutor (movido desde las @Tool de resolución) ────────────
@@ -99,6 +114,7 @@ public class ResolucionEjecutor {
             case DOS_FASES -> "Dos Fases";
             case GRAFICO -> "Gráfico";
             case TRANSPORTE -> "Transporte";   // no se alcanza: transporte se formatea aparte
+            case REDES -> "Redes";             // no se alcanza: redes se formatea aparte
         };
         StringBuilder sb = new StringBuilder();
         sb.append("=== RESULTADO DEL SOLVER (").append(nombre).append(") ===\n");
@@ -249,6 +265,101 @@ public class ResolucionEjecutor {
         } else {
             sb.append("Explica que esta es una SOLUCIÓN BÁSICA INICIAL (no necesariamente óptima) y ");
             sb.append("pregunta al estudiante si quiere optimizarla con MODI para hallar el costo mínimo.");
+        }
+
+        return sb.toString();
+    }
+
+    private String formatearRed(SolveResult<SolucionRed> r, ModeloRed modelo) {
+        String nombre = switch (modelo.metodo()) {
+            case DIJKSTRA -> "Dijkstra — ruta más corta";
+            case KRUSKAL -> "Kruskal — árbol de expansión mínima";
+            case EDMONDS_KARP -> "Edmonds-Karp — flujo máximo";
+            case FLUJO_COSTO_MINIMO -> "Flujo de costo mínimo";
+            case ASIGNACION -> "Asignación (vía red de costo mínimo)";
+        };
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("=== RESULTADO DEL SOLVER (Redes — ").append(nombre).append(") ===\n");
+        sb.append("Estado: ").append(r.status().name()).append("\n");
+
+        if (r.status() == SolveStatus.INFACTIBLE) {
+            switch (modelo.metodo()) {
+                case DIJKSTRA -> sb.append("El sumidero NO es alcanzable desde la fuente: no existe ninguna ruta.\n");
+                case KRUSKAL -> sb.append("El grafo NO es conexo: hay componentes que ninguna arista une, ")
+                        .append("así que no existe árbol de expansión que cubra todos los nodos.\n");
+                default -> sb.append("No existe ningún camino con capacidad disponible de la fuente al sumidero.\n");
+            }
+            sb.append("Pregunta al estudiante si falta alguna arista/arco en el modelo o si los nodos están bien conectados.\n");
+            return sb.toString();
+        }
+
+        if (r.solution() == null) {
+            sb.append("No se obtuvo solución.\n");
+            return sb.toString();
+        }
+
+        SolucionRed sol = r.solution();
+        switch (modelo.metodo()) {
+            case DIJKSTRA -> {
+                if (sol.rutaOptima() != null) {
+                    sb.append("Ruta más corta: ").append(String.join(" → ", sol.rutaOptima()))
+                      .append(" con distancia total = ").append(sol.valorObjetivo()).append("\n");
+                }
+                sb.append("Distancias mínimas desde '").append(modelo.fuente()).append("':\n");
+                sol.distancias().forEach((nodo, d) ->
+                        sb.append("  ").append(nodo).append(" = ").append(d).append("\n"));
+            }
+            case KRUSKAL -> {
+                sb.append("Peso total del árbol de expansión mínima = ").append(sol.valorObjetivo()).append("\n");
+                sb.append("Aristas del árbol:\n");
+                for (Arista a : sol.aristasSolucion())
+                    sb.append("  ").append(a.origen()).append(" — ").append(a.destino())
+                      .append(" (peso ").append(a.peso()).append(")\n");
+            }
+            case EDMONDS_KARP -> {
+                sb.append("Flujo máximo de '").append(modelo.fuente()).append("' a '")
+                  .append(modelo.sumidero()).append("' = ").append(sol.valorObjetivo()).append("\n");
+                sb.append("Flujo por arco (solo arcos usados):\n");
+                sol.flujoPorArco().forEach((arco, f) ->
+                        sb.append("  ").append(arco).append(": ").append(f).append(" unidad(es)\n"));
+            }
+            case FLUJO_COSTO_MINIMO -> {
+                sb.append("Flujo máximo = ").append(sol.flujoTotal())
+                  .append(" con costo total MÍNIMO = ").append(sol.costoTotal()).append("\n");
+                sb.append("Flujo por arco (solo arcos usados):\n");
+                sol.flujoPorArco().forEach((arco, f) ->
+                        sb.append("  ").append(arco).append(": ").append(f).append(" unidad(es)\n"));
+            }
+            case ASIGNACION -> {
+                sb.append("Costo total MÍNIMO de la asignación = ").append(sol.costoTotal()).append("\n");
+                sb.append("Asignación óptima:\n");
+                sol.asignacion().forEach((agente, tarea) ->
+                        sb.append("  ").append(agente).append(" → ").append(tarea).append("\n"));
+            }
+        }
+
+        sb.append("\n--- PASOS DEL ALGORITMO ---\n");
+        for (SolveStep step : r.steps()) {
+            sb.append("Paso ").append(step.numero()).append(": ").append(step.titulo()).append("\n");
+        }
+
+        sb.append("\nLa interfaz ya muestra el grafo con la solución resaltada y los pasos. ");
+        switch (modelo.metodo()) {
+            case DIJKSTRA -> sb.append("Guía al estudiante para que siga el orden en que se asentaron los nodos ")
+                    .append("y entienda por qué asentar siempre el de menor distancia provisional garantiza el óptimo ")
+                    .append("(y por qué eso falla con pesos negativos).");
+            case KRUSKAL -> sb.append("Guía al estudiante para que verifique por qué cada arista aceptada no forma ciclo ")
+                    .append("y por qué elegir siempre la más barata disponible produce el árbol de peso mínimo.");
+            case EDMONDS_KARP -> sb.append("Guía al estudiante por los caminos de aumento: en cada uno, ")
+                    .append("pregúntale cuál es el cuello de botella y qué significa que el arco inverso 'devuelva' flujo. ")
+                    .append("Conecta el resultado con el corte mínimo (máx flujo = mín corte).");
+            case FLUJO_COSTO_MINIMO -> sb.append("Guía al estudiante por los caminos aumentantes en orden de costo: ")
+                    .append("pregúntale por qué se elige siempre el camino más barato de la red residual y qué papel ")
+                    .append("juegan los arcos inversos con costo negativo (re-ruteo).");
+            case ASIGNACION -> sb.append("Explica la reducción: cada agente y tarea con capacidad 1 fuerza una ")
+                    .append("asignación uno-a-uno, y el flujo de costo mínimo elige la combinación más barata. ")
+                    .append("Menciona que el método Húngaro llega al mismo óptimo por otro camino.");
         }
 
         return sb.toString();

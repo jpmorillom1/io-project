@@ -4,6 +4,7 @@ import jpap.dev.io_api.domain.common.SolveResult;
 import jpap.dev.io_api.domain.lp.ModeloLP;
 import jpap.dev.io_api.domain.lp.SolucionLP;
 import jpap.dev.io_api.domain.lp.grafico.SolucionGrafica;
+import jpap.dev.io_api.domain.redes.SolucionRed;
 import jpap.dev.io_api.domain.transporte.SolucionTransporte;
 import jpap.dev.io_api.infrastructure.ai.dto.SolicitudAprobacion;
 import jpap.dev.io_api.infrastructure.ai.dto.ValidacionResponse;
@@ -43,6 +44,7 @@ public class ChatContextStore {
         public SolveResult<SolucionLP> resultado;
         public SolveResult<SolucionGrafica> resultadoGrafico;
         public SolveResult<SolucionTransporte> resultadoTransporte;
+        public SolveResult<SolucionRed> resultadoRed;
         public SolicitudAprobacion solicitudAprobacion;
     }
 }

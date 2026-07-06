@@ -4,6 +4,7 @@ import jpap.dev.io_api.application.lp.DosFasesService;
 import jpap.dev.io_api.application.lp.GraficoService;
 import jpap.dev.io_api.application.lp.GranMService;
 import jpap.dev.io_api.application.lp.SimplexService;
+import jpap.dev.io_api.application.redes.RedService;
 import jpap.dev.io_api.application.transporte.TransporteService;
 import jpap.dev.io_api.domain.common.SolveStatus;
 import jpap.dev.io_api.domain.lp.FuncionObjetivo;
@@ -11,6 +12,9 @@ import jpap.dev.io_api.domain.lp.ModeloLP;
 import jpap.dev.io_api.domain.lp.Restriccion;
 import jpap.dev.io_api.domain.lp.TipoObjetivo;
 import jpap.dev.io_api.domain.lp.TipoRestriccion;
+import jpap.dev.io_api.domain.redes.Arista;
+import jpap.dev.io_api.domain.redes.MetodoRed;
+import jpap.dev.io_api.domain.redes.ModeloRed;
 import jpap.dev.io_api.domain.transporte.MetodoTransporte;
 import jpap.dev.io_api.domain.transporte.ModeloTransporte;
 import jpap.dev.io_api.infrastructure.ai.dto.SolicitudAprobacion;
@@ -48,7 +52,7 @@ class ResolucionAprobadaWorkflowTest {
         registry = new SolicitudAprobacionRegistry();
         ResolucionEjecutor ejecutor = new ResolucionEjecutor(
                 new SimplexService(), new GranMService(), new DosFasesService(),
-                new GraficoService(), new TransporteService());
+                new GraficoService(), new TransporteService(), new RedService());
         ResolucionAprobadaWorkflow workflow = new HitlConfig().resolucionAprobadaWorkflow(ejecutor, registry);
         executor = Executors.newVirtualThreadPerTaskExecutor();
         service = new AprobacionHumanaService(workflow, registry, executor);
@@ -142,9 +146,36 @@ class ResolucionAprobadaWorkflowTest {
 
         assertNull(desenlace.ejecucion().resultado(), "transporte no produce resultado tabular LP");
         assertNull(desenlace.ejecucion().resultadoGrafico());
+        assertNull(desenlace.ejecucion().resultadoRed());
         assertNotNull(desenlace.ejecucion().resultadoTransporte());
         assertEquals(240.0, desenlace.ejecucion().resultadoTransporte().solution().costoTotal(), 1e-6);
         assertTrue(desenlace.resumenParaTutor().contains("Transporte"));
+    }
+
+    /** Ruta más corta A→D en A→B(4), A→C(2), C→B(1), B→D(5): A → C → B → D con distancia 8. */
+    @Test
+    void aprobarConMetodoRedesDevuelveResultadoRed() {
+        ModeloRed modelo = new ModeloRed(
+                List.of("A", "B", "C", "D"),
+                List.of(
+                        new Arista("A", "B", 4.0, null, null),
+                        new Arista("A", "C", 2.0, null, null),
+                        new Arista("C", "B", 1.0, null, null),
+                        new Arista("B", "D", 5.0, null, null)),
+                true, MetodoRed.DIJKSTRA, "A", "D", null, null, null);
+
+        SolicitudAprobacion solicitud = service.solicitar("sesion-r", modelo, MetodoResolucion.REDES);
+        var desenlace = service.decidir(solicitud.solicitudId(), true, null);
+
+        assertNull(desenlace.ejecucion().resultado(), "redes no produce resultado tabular LP");
+        assertNull(desenlace.ejecucion().resultadoGrafico());
+        assertNull(desenlace.ejecucion().resultadoTransporte());
+        assertNotNull(desenlace.ejecucion().resultadoRed());
+        assertEquals(SolveStatus.OPTIMO, desenlace.ejecucion().resultadoRed().status());
+        assertEquals(8.0, desenlace.ejecucion().resultadoRed().solution().valorObjetivo(), 1e-6);
+        assertEquals(List.of("A", "C", "B", "D"),
+                desenlace.ejecucion().resultadoRed().solution().rutaOptima());
+        assertTrue(desenlace.resumenParaTutor().contains("Redes"));
     }
 
     @Test
