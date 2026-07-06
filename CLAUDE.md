@@ -19,8 +19,8 @@ un panel de configuración, y el sistema lo resuelve mostrando el **procedimient
 | Módulo | Estado | Algoritmos |
 |---|---|---|
 | Programación Lineal (LP) | **Simplex, Gran M, Dos Fases, Gráfico IMPLEMENTADOS** | Simplex (≤); Gran M, Dos Fases (≤/≥/=); Gráfico (2 variables); análisis post-óptimo incluido. Dual — pendiente |
-| Transporte | **Esquina Noroeste, Costo Mínimo, Vogel, MODI IMPLEMENTADOS** | Soluciones iniciales (NW/CostoMin/Vogel) + MODI (óptimo, compara las 3 iniciales); balanceo automático. Húngaro (asignación) — pendiente |
-| Redes | TODO estructurado | Dijkstra, Kruskal (+Union-Find), Edmonds-Karp |
+| Transporte | **Esquina Noroeste, Costo Mínimo, Vogel, MODI IMPLEMENTADOS** | Soluciones iniciales (NW/CostoMin/Vogel) + MODI (óptimo, compara las 3 iniciales); balanceo automático. Húngaro (asignación) — pendiente (la asignación se resuelve en Redes vía MCF) |
+| Redes | **Dijkstra, Kruskal, Edmonds-Karp, MCF, Asignación IMPLEMENTADOS (backend)** | Dijkstra (ruta más corta), Kruskal+Union-Find (MST), Edmonds-Karp (flujo máx), Flujo de Costo Mínimo (SSP/Bellman-Ford) y Asignación (reducción a MCF, sin Húngaro). Frontend pendiente — ver `docs/GUIA_REDES_FRONTEND.md` |
 | PL Entera | TODO estructurado | Branch & Bound sobre Simplex; Gomory (opcional) |
 | Programación Dinámica | TODO estructurado | Tipos parametrizables (asignación/mochila/ruta por etapas) |
 | Inventarios | TODO estructurado | EOQ básico, con faltantes, con descuentos, POQ, punto de reorden |
@@ -134,6 +134,28 @@ válidos. Las excepciones se reservan para entradas malformadas.
 - `modi/ModiSolver` (+ `modi/CicloSteppingStone`) — corre los 3 iniciales, arranca del más
   barato, optimiza con u/v + ciclo; maneja degeneración con celdas ε (union-find)
 
+### domain/redes/
+- `ModeloRed` (record, `implements ModeloResoluble`) — `nodos`, `aristas`, `dirigido`,
+  `metodo` (`MetodoRed`), `fuente?`, `sumidero?`; para ASIGNACION: `agentes`, `tareas`,
+  `matrizCostos` (los campos de grafo van null)
+- `Arista` (record) — `origen`, `destino`, `peso?` (Dijkstra/Kruskal), `capacidad?` (EK/MCF),
+  `costo?` (MCF); campos `Double` nullable según método
+- `SolucionRed` — unificada, campos null según método: `distancias`, `rutaOptima`,
+  `aristasSolucion`, `flujoPorArco` (clave `"u->v"`), `asignacion`, `valorObjetivo`,
+  `flujoTotal`, `costoTotal`
+- `MetodoRed` (enum): DIJKSTRA, KRUSKAL, EDMONDS_KARP, FLUJO_COSTO_MINIMO, ASIGNACION
+- `RedValidador` — valida por método (malformado → IllegalArgumentException); la
+  no-factibilidad (desconexo/inalcanzable/sin camino) NUNCA lanza: es `INFACTIBLE`
+- `RedUtils` — round, `claveArco`, `datosBase` (tipo="REDES") y serialización de aristas
+  con `estado` (normal/activa/solucion/descartada) para pintar el grafo de cada paso
+- `dijkstra/DijkstraSolver` — pesos ≥ 0 (negativo → excepción); sumidero opcional
+- `kruskal/{KruskalSolver, UnionFind}` — trata el grafo como no dirigido
+- `edmondskarp/EdmondsKarpSolver` — BFS de caminos de aumento sobre red residual
+- `flujocostominimo/FlujoCostoMinimoSolver` — min-cost max-flow s→t por successive shortest
+  paths (SPFA/Bellman-Ford); expone `ejecutarCore(RedMcf, ...)` reusable
+- `asignacion/AsignacionSolver` — arma la red bipartita unitaria (S→agente→tarea→T),
+  balancea con "Ficticio" si n≠m y delega en el core de MCF (NO Húngaro)
+
 ### application/lp/
 - `SimplexUseCase` / `SimplexService`
 - `GranMUseCase` / `GranMService`
@@ -142,6 +164,10 @@ válidos. Las excepciones se reservan para entradas malformadas.
 
 ### application/transporte/
 - `TransporteUseCase` / `TransporteService` — fachada única: despacha al solver según `modelo.metodo()`
+
+### application/redes/
+- `RedUseCase` / `RedService` — fachada única: despacha al solver según `modelo.metodo()`
+  (sin método por defecto: `metodo` null → IllegalArgumentException)
 
 ### infrastructure/lp/
 - `SimplexController` — `POST /api/v1/lp/simplex`
@@ -152,6 +178,10 @@ válidos. Las excepciones se reservan para entradas malformadas.
 ### infrastructure/transporte/
 - `TransporteController` — `POST /api/v1/transporte/{esquina-noroeste,costo-minimo,vogel,modi}`
   (cada endpoint fuerza su método; bind directo de `ModeloTransporte`)
+
+### infrastructure/redes/
+- `RedController` — `POST /api/v1/redes/{dijkstra,kruskal,edmonds-karp,flujo-costo-minimo,asignacion}`
+  (cada endpoint fuerza su método; bind directo de `ModeloRed`)
 
 ### infrastructure/ai/
 - `TutorAiService` — interfaz conversacional, memoria en RAM por sesión (30 mensajes)
@@ -172,6 +202,9 @@ válidos. Las excepciones se reservan para entradas malformadas.
 - `tools/TransporteTool` — `@Tool resolverTransporte(...)` — oferta/demanda/costos + método — **solicita aprobación HITL**
   (la matriz de costos va como `List<FilaCostos>`, NO `List<List<Double>>`: LangChain4j 1.13.0 no
   genera el esquema JSON de genéricos anidados — ver §9)
+- `tools/RedTool` — dos `@Tool`: `resolverRed(...)` (grafo: DIJKSTRA/KRUSKAL/EDMONDS_KARP/MCF,
+  aristas como `List<AristaInput>`) y `resolverAsignacion(...)` (matriz como `List<FilaCostos>`) —
+  ambas **solicitan aprobación HITL** con `MetodoResolucion.REDES`
 - `tools/SugerirModeloTool` — `@Tool registrarModeloSugerido(...)`
 - `tools/ValidarModeloTool` — `@Tool registrarValidacion(...)`
 - `tools/SolicitudAprobacionHelper` — paso común: crea la solicitud HITL y avisa al LLM
@@ -179,8 +212,8 @@ válidos. Las excepciones se reservan para entradas malformadas.
 - `AiChatController` — endpoints AI; `/chat` inicializa el store, llama al tutor
   y devuelve `ChatResponse`; `/chat/aprobacion` recibe la decisión humana, reanuda el
   workflow y reanuda al tutor con el desenlace en un mensaje `[SISTEMA]`
-- `dto/` — ChatRequest, ChatResponse (respuesta + 6 campos nullables: modeloSugerido, validacion,
-           resultado, resultadoGrafico, resultadoTransporte, solicitudAprobacion), SolicitudAprobacion
+- `dto/` — ChatRequest, ChatResponse (respuesta + 7 campos nullables: modeloSugerido, validacion,
+           resultado, resultadoGrafico, resultadoTransporte, resultadoRed, solicitudAprobacion), SolicitudAprobacion
            (modelo tipado `ModeloResoluble`), DecisionAprobacionRequest, SugerirModeloRequest,
            ModeloSugeridoResponse, ValidarModeloRequest, ValidacionResponse
 
@@ -196,11 +229,11 @@ estructural, no de prompt. Ver §7 para el flujo completo.
   `decidir()` (completa el PendingResponse "en caliente", espera el desenlace y evacúa
   el scope), `limpiarExpiradas()` (@Scheduled: descarta solicitudes sin decisión >15 min)
 - `SolicitudAprobacionRegistry` — registro en RAM de solicitudes en vuelo
-- `ResolucionEjecutor` — único punto que invoca los use cases de resolución (LP + Transporte);
-  su record `Ejecucion` tiene 3 resultados (solo uno non-null: `resultado` tabular LP,
-  `resultadoGrafico`, o `resultadoTransporte`); genera el resumen textual que el tutor usa
-- `MetodoResolucion` (enum): SIMPLEX, GRAN_M, DOS_FASES, GRAFICO, **TRANSPORTE** (el submétodo
-  de transporte viaja dentro del `ModeloTransporte`, no como valores de enum aparte)
+- `ResolucionEjecutor` — único punto que invoca los use cases de resolución (LP + Transporte + Redes);
+  su record `Ejecucion` tiene 4 resultados (solo uno non-null: `resultado` tabular LP,
+  `resultadoGrafico`, `resultadoTransporte` o `resultadoRed`); genera el resumen textual que el tutor usa
+- `MetodoResolucion` (enum): SIMPLEX, GRAN_M, DOS_FASES, GRAFICO, **TRANSPORTE**, **REDES**
+  (el submétodo viaja dentro del `ModeloTransporte`/`ModeloRed`, no como valores de enum aparte)
 - `DecisionAprobacion` (record)
 - Toda la cadena (`SolicitudAprobacion`, `Registry`, `AprobacionHumanaService`, `Workflow`)
   está tipada a `ModeloResoluble`, no a `ModeloLP` — así admite cualquier módulo futuro
@@ -220,9 +253,15 @@ estructural, no de prompt. Ver §7 para el flujo completo.
 - `domain/transporte/*` — `EsquinaNoroesteSolverTest`, `CostoMinimoSolverTest`, `VogelSolverTest`,
   `ModiSolverTest` (óptimo conocido 240/30, itera θ>0 en el ejemplo Taha 102→100, degeneración,
   comparativa, balanceo, validación), `CicloSteppingStoneTest`
+- `domain/redes/*` — `DijkstraSolverTest` (ruta conocida, peso negativo → excepción, sumidero
+  inalcanzable → INFACTIBLE), `KruskalSolverTest` (MST conocido, arista rechazada por ciclo,
+  desconexo → INFACTIBLE), `EdmondsKarpSolverTest` (flujo máx 5), `FlujoCostoMinimoSolverTest`
+  (re-ruteo por arco inverso, costo 7), `AsignacionSolverTest` (óptimo 9, balanceo n≠m)
 - `infrastructure/transporte/TransporteControllerTest` — controller + serialización Jackson
+- `infrastructure/redes/RedControllerTest` — controller + serialización Jackson (dijkstra/kruskal/asignacion)
 - `infrastructure/ai/tools/TransporteToolSchemaTest` — el esquema JSON del `@Tool` se genera sin crash
-- `ResolucionAprobadaWorkflowTest` — HITL end-to-end (incluye caso TRANSPORTE devolviendo resultado)
+- `infrastructure/ai/tools/RedToolSchemaTest` — esquemas de `resolverRed` y `resolverAsignacion` sin crash
+- `ResolucionAprobadaWorkflowTest` — HITL end-to-end (incluye casos TRANSPORTE y REDES devolviendo resultado)
 
 ---
 
@@ -238,6 +277,11 @@ estructural, no de prompt. Ver §7 para el flujo completo.
 | POST | `/api/v1/transporte/costo-minimo` | Solución básica inicial (costo mínimo) |
 | POST | `/api/v1/transporte/vogel` | Solución básica inicial (Vogel/VAM) |
 | POST | `/api/v1/transporte/modi` | Óptimo por MODI (compara las 3 iniciales y optimiza) |
+| POST | `/api/v1/redes/dijkstra` | Ruta más corta (pesos ≥ 0; sumidero opcional) |
+| POST | `/api/v1/redes/kruskal` | Árbol de expansión mínima (no dirigido; Union-Find) |
+| POST | `/api/v1/redes/edmonds-karp` | Flujo máximo fuente→sumidero |
+| POST | `/api/v1/redes/flujo-costo-minimo` | Flujo máximo de costo mínimo (successive shortest paths) |
+| POST | `/api/v1/redes/asignacion` | Asignación óptima agentes→tareas (reducción a MCF) |
 | POST | `/api/v1/ai/chat` | Chat socrático con memoria de sesión |
 | POST | `/api/v1/ai/chat/aprobacion` | HITL: decisión humana (aprobar/rechazar) sobre la solicitud de resolución pendiente |
 | POST | `/api/v1/ai/sugerir-modelo` | Extrae `ModeloLP` desde lenguaje natural |
@@ -245,7 +289,8 @@ estructural, no de prompt. Ver §7 para el flujo completo.
 
 Los tres solvers LP tabulares incluyen en `solution`: `valores`, `holguras`, `preciosSombra` y
 `rangosSensibilidad`. Los de transporte devuelven `SolucionTransporte` (`asignaciones`, `costoTotal`,
-`comparativaInicial`, `metodoInicial`). Todos comparten el envoltorio `SolveResult<T>` (status + steps).
+`comparativaInicial`, `metodoInicial`). Los de redes devuelven `SolucionRed` (unificada, campos null
+según método). Todos comparten el envoltorio `SolveResult<T>` (status + steps).
 
 Ver `docs/API_CONTRACT.md` para los cuerpos de request/response completos.
 
@@ -383,6 +428,17 @@ también viven en RAM — persistirlas requeriría un `AgenticScopeStore`.
 - ❌ No pases parámetros `@Tool` con **genéricos anidados** (`List<List<Double>>`, `Map<..,List<..>>`):
   LangChain4j 1.13.0 falla al generar su esquema JSON (`ParameterizedTypeImpl cannot be cast to Class`)
   y el bean `tutorAiService` no arranca. Envuelve la lista interna en un `record` (ver `TransporteTool.FilaCostos`).
+  Los records anidados de `@Tool` llevan SIEMPRE `@JsonIgnoreProperties(ignoreUnknown = true)`:
+  el LLM a veces inventa campos extra y el Jackson de LangChain4j deserializa en modo estricto
+  (sin la anotación, el turno entero del chat falla con `UnrecognizedPropertyException`).
+  Además `AiConfig` registra `toolArgumentsErrorHandler` (el error de argumentos vuelve al LLM
+  como texto para que se autocorrija) y `maxSequentialToolsInvocations(6)` (tope anti-bucle).
+- ❌ No dejes como **requeridos** los campos opcionales de un `@Tool` (p. ej. `costo` solo aplica a MCF):
+  Groq valida la tool call generada contra el esquema y rechaza tanto `null` como la omisión de un
+  campo requerido → 400 `tool_use_failed` en bucle. Marca el parámetro de método con
+  `@P(value=..., required=false)` y el componente de record anidado con `@JsonProperty(required=false)`
+  (es lo que lee `JsonSchemaElementUtils.isRequired`), y en la `@Description` pide OMITIR el campo,
+  nunca enviar `null` (ver `RedTool.AristaInput`).
 - ❌ No re-tipes la cadena HITL a un módulo concreto — usa `ModeloResoluble` (interfaz marcador en `domain/common`).
 
 ---
@@ -475,4 +531,6 @@ el método correcto por el tipo de restricciones del modelo.
 - `docs/RAG_IMPLEMENTATION_GUIDE.md` — (COMPLETADO ) guía de la implementación RAG
 - `docs/RETRY_LLM.md` — retry ante `tool_use_failed` de Groq (RetryingChatModel + fallback del controlador)
 - `docs/TRANSPORTE.md` — (COMPLETADO) módulo Transporte de punta a punta: dominio, MODI, HITL generalizado, grafo de red
-- `docs/GUIA_REDES.md` — **guía para la próxima sesión**: cómo implementar el módulo Redes reusando todo lo de Transporte
+- `docs/GUIA_REDES.md` — (COMPLETADO — backend) guía con la que se implementó el módulo Redes
+- `docs/GUIA_REDES_FRONTEND.md` — **guía para la próxima sesión**: cómo construir la UI de Redes
+  calcada del frontend de Transporte (NetworkGraph + adaptador + touch-points del chat adaptativo)

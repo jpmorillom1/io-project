@@ -444,12 +444,82 @@ Si Σoferta ≠ Σdemanda el backend balancea solo (agrega un origen/destino `"F
 
 ---
 
+## Redes (IMPLEMENTADO)
+
+Cinco endpoints, uno por problema. Todos aceptan el mismo body `ModeloRed` (cada endpoint
+fuerza su método) y devuelven `SolveResult<SolucionRed>`.
+
+```
+POST /api/v1/redes/dijkstra             → ruta más corta (pesos ≥ 0)
+POST /api/v1/redes/kruskal              → árbol de expansión mínima (no dirigido)
+POST /api/v1/redes/edmonds-karp         → flujo máximo fuente→sumidero
+POST /api/v1/redes/flujo-costo-minimo   → flujo máximo de costo mínimo fuente→sumidero
+POST /api/v1/redes/asignacion           → asignación agentes→tareas (vía red MCF)
+```
+
+**Request** (`ModeloRed`) — cada arista usa los campos de su método
+(`peso` → Dijkstra/Kruskal · `capacidad` → EK/MCF · `costo` → MCF):
+```json
+{
+  "nodos": ["A", "B", "C", "D", "E"],
+  "aristas": [
+    { "origen": "A", "destino": "B", "peso": 4 },
+    { "origen": "A", "destino": "C", "peso": 2 },
+    { "origen": "C", "destino": "B", "peso": 1 },
+    { "origen": "B", "destino": "D", "peso": 5 },
+    { "origen": "D", "destino": "E", "peso": 2 }
+  ],
+  "dirigido": true,
+  "fuente": "A",
+  "sumidero": "E"
+}
+```
+- `fuente`/`sumidero`: obligatorios en EK/MCF; en Dijkstra la fuente es obligatoria y el
+  sumidero opcional (sin él se devuelven las distancias a todos los nodos); Kruskal no los usa.
+- **Asignación** usa otro cuerpo (el backend construye la red bipartita y balancea con un
+  agente/tarea `"Ficticio"` de costo 0 si n ≠ m):
+```json
+{
+  "agentes": ["A1", "A2", "A3"],
+  "tareas":  ["T1", "T2", "T3"],
+  "matrizCostos": [[9, 2, 7], [6, 4, 3], [5, 8, 1]]
+}
+```
+
+**Response** — `solution` es `SolucionRed` unificada (campos null según método):
+```json
+{
+  "status": "OPTIMO",
+  "solution": {
+    "distancias": { "A": 0, "B": 3, "C": 2, "D": 8, "E": 10 },
+    "rutaOptima": ["A", "C", "B", "D", "E"],
+    "aristasSolucion": [ { "origen": "A", "destino": "C", "peso": 2 } ],
+    "flujoPorArco": null,
+    "asignacion": null,
+    "valorObjetivo": 10,
+    "flujoTotal": null,
+    "costoTotal": null
+  },
+  "steps": [ /* cada paso: datos.tipo="REDES", metodo, nodos, aristas (con estado:
+                normal|activa|solucion|descartada, y flujo en EK/MCF), fuente?, sumidero?;
+                extras por método: distancias/nodoActual (Dijkstra), aristaEvaluada/
+                pesoAcumulado (Kruskal), camino/cuelloBotella/flujoTotal (EK),
+                +costoUnitario/costoAcumulado (MCF), asignacion/costoTotal (Asignación) */ ]
+}
+```
+- `valorObjetivo` = distancia al sumidero / peso del árbol / flujo máximo / costo mínimo /
+  costo de la asignación, según el método. EK/MCF/Asignación llenan `flujoPorArco`
+  (clave `"origen->destino"`) y `flujoTotal`; MCF/Asignación además `costoTotal`;
+  Asignación llena `asignacion` (agente→tarea, sin ficticios).
+- No-factibilidad (sumidero inalcanzable, grafo desconexo, sin camino s→t) →
+  `status: "INFACTIBLE"` con `solution: null` (no es un error HTTP).
+
+---
+
 ## Módulos pendientes (devuelven 404 por ahora)
 
 ```
 POST /api/v1/lp/dual          → pendiente
-
-POST /api/v1/redes/resolver        → pendiente (ver docs/GUIA_REDES.md)
 
 POST /api/v1/entera/resolver       → pendiente
 POST /api/v1/dinamica/resolver     → pendiente
