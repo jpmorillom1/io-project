@@ -1,5 +1,6 @@
 package jpap.dev.io_api.infrastructure.ai.tools;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.model.output.structured.Description;
@@ -33,6 +34,7 @@ public class GraficoTool {
         this.contextStore = contextStore;
     }
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public record RestriccionInput(
             @Description("Coeficientes de la restricción en el mismo orden que las 2 variables de decisión")
             List<Double> coeficientes,

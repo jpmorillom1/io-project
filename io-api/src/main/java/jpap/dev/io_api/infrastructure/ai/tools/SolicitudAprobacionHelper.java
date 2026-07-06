@@ -25,6 +25,19 @@ final class SolicitudAprobacionHelper {
                     "No hay sesión de chat activa — la solicitud de aprobación requiere un sesionId");
         }
 
+        // Candado por turno: llama-3.3 a temperatura 0 tiende a repetir la misma tool call
+        // en bucle tras recibir el resultado. Si este turno ya creó una solicitud, no se
+        // crea otra y se devuelve un mensaje distinto que corta el patrón.
+        if (contextStore.obtener().solicitudAprobacion != null) {
+            return """
+                    ERROR: LA SOLICITUD YA FUE ENVIADA EN ESTE TURNO — NO LA REPITAS.
+                    Invocar esta herramienta de nuevo no tiene ningún efecto.
+                    DETENTE: no llames más herramientas. Escribe AHORA tu respuesta en texto
+                    para el estudiante, pidiéndole que revise el modelo en pantalla y lo
+                    confirme con el botón Aprobar (o lo rechace si quiere ajustar algo).
+                    """;
+        }
+
         SolicitudAprobacion solicitud = aprobacionService.solicitar(sesionId, modelo, metodo);
         contextStore.obtener().solicitudAprobacion = solicitud;
 

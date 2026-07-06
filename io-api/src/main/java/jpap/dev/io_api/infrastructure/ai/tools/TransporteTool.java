@@ -1,5 +1,6 @@
 package jpap.dev.io_api.infrastructure.ai.tools;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.model.output.structured.Description;
@@ -37,7 +38,11 @@ public class TransporteTool {
      * Una fila de la matriz de costos (un origen hacia cada destino).
      * Se envuelve la lista en un record porque LangChain4j 1.13.0 no genera el esquema
      * JSON de un parámetro con genéricos anidados (List&lt;List&lt;Double&gt;&gt;).
+     *
+     * ignoreUnknown: el LLM a veces inventa campos extra (p. ej. "origen") y el Jackson
+     * de LangChain4j deserializa en modo estricto — sin esto el turno entero falla.
      */
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public record FilaCostos(
             @Description("Costos unitarios de este origen hacia cada destino, en el orden de 'destinos'")
             List<Double> costos
