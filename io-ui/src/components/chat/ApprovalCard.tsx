@@ -2,7 +2,8 @@ import { useState, type CSSProperties } from 'react'
 import { Button } from '@/components/ui/button'
 import { Check, X, ShieldQuestion } from 'lucide-react'
 import type {
-  SolicitudAprobacion, ModeloLP, ModeloTransporte, MetodoResolucion, MetodoTransporte, TipoRestriccion,
+  SolicitudAprobacion, ModeloLP, ModeloTransporte, ModeloRed, MetodoResolucion, MetodoTransporte,
+  MetodoRed, TipoRestriccion,
 } from '@/types/io'
 
 interface Props {
@@ -17,6 +18,7 @@ const METODO_LABEL: Record<MetodoResolucion, string> = {
   DOS_FASES: 'Dos Fases',
   GRAFICO: 'Método gráfico',
   TRANSPORTE: 'Transporte',
+  REDES: 'Redes',
 }
 
 const METODO_TRANSPORTE_LABEL: Record<MetodoTransporte, string> = {
@@ -24,6 +26,14 @@ const METODO_TRANSPORTE_LABEL: Record<MetodoTransporte, string> = {
   COSTO_MINIMO: 'Costo Mínimo',
   VOGEL: 'Vogel (VAM)',
   MODI: 'MODI (óptimo)',
+}
+
+const METODO_RED_LABEL: Record<MetodoRed, string> = {
+  DIJKSTRA: 'Dijkstra',
+  KRUSKAL: 'Kruskal',
+  EDMONDS_KARP: 'Edmonds-Karp',
+  FLUJO_COSTO_MINIMO: 'Flujo de costo mínimo',
+  ASIGNACION: 'Asignación',
 }
 
 const SIGNO: Record<TipoRestriccion, string> = { LEQ: '≤', GEQ: '≥', EQ: '=' }
@@ -91,6 +101,70 @@ function MatrizTransporte({ modelo }: { modelo: ModeloTransporte }) {
   )
 }
 
+/** Resumen del grafo/asignación de un modelo de redes para la tarjeta de aprobación. */
+function ResumenRed({ modelo }: { modelo: ModeloRed }) {
+  const celda: CSSProperties = {
+    border: '1px solid var(--ij-border)',
+    padding: '2px 6px',
+    textAlign: 'center',
+    whiteSpace: 'nowrap',
+  }
+  const cabecera: CSSProperties = { ...celda, color: 'var(--ij-teal)', fontWeight: 600 }
+
+  if (modelo.metodo === 'ASIGNACION') {
+    const agentes = modelo.agentes ?? []
+    const tareas = modelo.tareas ?? []
+    return (
+      <table style={{ borderCollapse: 'collapse', fontSize: '12px' }}>
+        <thead>
+          <tr>
+            <th style={cabecera}></th>
+            {tareas.map((t, j) => (
+              <th key={j} style={cabecera}>{t}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {agentes.map((a, i) => (
+            <tr key={i}>
+              <td style={cabecera}>{a}</td>
+              {tareas.map((_, j) => (
+                <td key={j} style={celda}>{modelo.matrizCostos?.[i]?.[j]}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    )
+  }
+
+  const valorArista = (a: NonNullable<ModeloRed['aristas']>[number]) => {
+    switch (modelo.metodo) {
+      case 'EDMONDS_KARP': return `cap ${a.capacidad ?? 0}`
+      case 'FLUJO_COSTO_MINIMO': return `cap ${a.capacidad ?? 0} · $${a.costo ?? 0}`
+      default: return `peso ${a.peso ?? 0}`
+    }
+  }
+  const flecha = modelo.metodo === 'KRUSKAL' ? ' — ' : ' → '
+
+  return (
+    <>
+      {(modelo.aristas ?? []).map((a, i) => (
+        <p key={i}>
+          {a.origen}{flecha}{a.destino} : {valorArista(a)}
+        </p>
+      ))}
+      {(modelo.fuente || modelo.sumidero) && (
+        <p style={{ color: 'var(--ij-teal)' }}>
+          {modelo.fuente && `Fuente: ${modelo.fuente}`}
+          {modelo.fuente && modelo.sumidero && ' · '}
+          {modelo.sumidero && `Sumidero: ${modelo.sumidero}`}
+        </p>
+      )}
+    </>
+  )
+}
+
 /**
  * Tarjeta Human-in-the-Loop: el tutor quiere ejecutar un solver y espera la
  * decisión del estudiante. Rechazar pide un comentario que re-alimenta al tutor.
@@ -101,9 +175,13 @@ export function ApprovalCard({ solicitud, onDecidir, disabled }: Props) {
 
   const esTransporte = solicitud.metodo === 'TRANSPORTE'
   const modeloT = esTransporte ? (solicitud.modelo as ModeloTransporte) : null
+  const esRed = solicitud.metodo === 'REDES'
+  const modeloR = esRed ? (solicitud.modelo as ModeloRed) : null
   const etiquetaMetodo = modeloT
     ? `Transporte · ${METODO_TRANSPORTE_LABEL[modeloT.metodo]}`
-    : METODO_LABEL[solicitud.metodo]
+    : modeloR
+      ? `Redes · ${METODO_RED_LABEL[modeloR.metodo]}`
+      : METODO_LABEL[solicitud.metodo]
 
   return (
     <div
@@ -132,6 +210,8 @@ export function ApprovalCard({ solicitud, onDecidir, disabled }: Props) {
       >
         {modeloT ? (
           <MatrizTransporte modelo={modeloT} />
+        ) : modeloR ? (
+          <ResumenRed modelo={modeloR} />
         ) : (
           lineasModelo(solicitud.modelo as ModeloLP).map((linea, i) => (
             <p key={i} className={i === 0 ? 'font-semibold' : undefined}>

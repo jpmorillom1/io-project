@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import type {
   ModeloLP, SolveResult, SolveResultGrafico, WorkspaceStatus, ValidacionResponse,
-  ModeloTransporte, SolveResultTransporte,
+  ModeloTransporte, SolveResultTransporte, ModeloRed, SolveResultRed,
 } from '@/types/io'
 
 type ActualizacionIA = 'modelo' | 'validacion' | 'resultado' | null
@@ -18,6 +18,9 @@ interface WorkspaceStore {
   modeloTransporte: ModeloTransporte | null
   modeloTransporteGrafico: ModeloTransporte | null
   resultadoTransporte: SolveResultTransporte | null
+  modeloRed: ModeloRed | null
+  modeloRedGrafico: ModeloRed | null
+  resultadoRed: SolveResultRed | null
   validado: boolean
   isChatBusy: boolean
   ultimaActualizacionIA: ActualizacionIA
@@ -32,6 +35,9 @@ interface WorkspaceStore {
   setModeloTransporte: (m: ModeloTransporte | null) => void
   setModeloTransporteGrafico: (m: ModeloTransporte | null) => void
   setResultadoTransporte: (r: SolveResultTransporte | null) => void
+  setModeloRed: (m: ModeloRed | null) => void
+  setModeloRedGrafico: (m: ModeloRed | null) => void
+  setResultadoRed: (r: SolveResultRed | null) => void
   setValidado: (v: boolean) => void
   resetResultado: () => void
   setValidacion: (v: ValidacionResponse) => void
@@ -51,6 +57,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
   modeloTransporte: null,
   modeloTransporteGrafico: null,
   resultadoTransporte: null,
+  modeloRed: null,
+  modeloRedGrafico: null,
+  resultadoRed: null,
   validado: false,
   isChatBusy: false,
   ultimaActualizacionIA: null,
@@ -65,8 +74,11 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
   setModeloTransporte: (modeloTransporte) => set({ modeloTransporte }),
   setModeloTransporteGrafico: (modeloTransporteGrafico) => set({ modeloTransporteGrafico }),
   setResultadoTransporte: (resultadoTransporte) => set({ resultadoTransporte }),
+  setModeloRed: (modeloRed) => set({ modeloRed }),
+  setModeloRedGrafico: (modeloRedGrafico) => set({ modeloRedGrafico }),
+  setResultadoRed: (resultadoRed) => set({ resultadoRed }),
   setValidado: (validado) => set({ validado }),
-  resetResultado: () => set({ resultado: null, resultadoGrafico: null, resultadoTransporte: null, status: 'EDITING', validado: false }),
+  resetResultado: () => set({ resultado: null, resultadoGrafico: null, resultadoTransporte: null, resultadoRed: null, status: 'EDITING', validado: false }),
   setValidacion: (v) => set({
     erroresValidacion: v.erroresEncontrados,
     sugerenciasValidacion: v.sugerencias,

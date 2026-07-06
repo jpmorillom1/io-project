@@ -1,6 +1,7 @@
 import type {
   ModeloLP, SolveResult, SolveResultGrafico, ChatResponse, ModeloSugeridoResponse, ValidacionResponse,
-  DecisionAprobacionRequest, ModeloTransporte, SolveResultTransporte, MetodoTransporte
+  DecisionAprobacionRequest, ModeloTransporte, SolveResultTransporte, MetodoTransporte,
+  ModeloRed, SolveResultRed, MetodoRed,
 } from '@/types/io'
 
 const API_BASE = 'http://localhost:8080/api/v1'
@@ -58,6 +59,23 @@ const RUTA_TRANSPORTE: Record<MetodoTransporte, string> = {
 
 export async function resolverTransporte(modelo: ModeloTransporte): Promise<SolveResultTransporte> {
   const res = await fetch(`${API_BASE}/transporte/${RUTA_TRANSPORTE[modelo.metodo]}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(modelo),
+  })
+  return handleResponse(res)
+}
+
+const RUTA_RED: Record<MetodoRed, string> = {
+  DIJKSTRA: 'dijkstra',
+  KRUSKAL: 'kruskal',
+  EDMONDS_KARP: 'edmonds-karp',
+  FLUJO_COSTO_MINIMO: 'flujo-costo-minimo',
+  ASIGNACION: 'asignacion',
+}
+
+export async function resolverRed(modelo: ModeloRed): Promise<SolveResultRed> {
+  const res = await fetch(`${API_BASE}/redes/${RUTA_RED[modelo.metodo]}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(modelo),

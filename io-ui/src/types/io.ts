@@ -82,6 +82,7 @@ export interface ChatResponse {
   resultado: SolveResult | null
   resultadoGrafico: SolveResultGrafico | null
   resultadoTransporte: SolveResultTransporte | null
+  resultadoRed: SolveResultRed | null
   solicitudAprobacion: SolicitudAprobacion | null
 }
 
@@ -89,13 +90,14 @@ export interface ChatResponse {
 // El tutor quiere resolver y espera la aprobación del estudiante.
 // El solver NO corre hasta enviar la decisión a POST /ai/chat/aprobacion.
 
-export type MetodoResolucion = 'SIMPLEX' | 'GRAN_M' | 'DOS_FASES' | 'GRAFICO' | 'TRANSPORTE'
+export type MetodoResolucion = 'SIMPLEX' | 'GRAN_M' | 'DOS_FASES' | 'GRAFICO' | 'TRANSPORTE' | 'REDES'
 
 export interface SolicitudAprobacion {
   solicitudId: string
   metodo: MetodoResolucion
-  // El modelo es genérico: ModeloLP para métodos LP/gráfico, ModeloTransporte para TRANSPORTE.
-  modelo: ModeloLP | ModeloTransporte
+  // El modelo es genérico: ModeloLP para métodos LP/gráfico, ModeloTransporte
+  // para TRANSPORTE, ModeloRed para REDES.
+  modelo: ModeloLP | ModeloTransporte | ModeloRed
 }
 
 export interface DecisionAprobacionRequest {
@@ -264,4 +266,99 @@ export interface SolveResultTransporte {
   status: SolveStatus
   solution: SolucionTransporte | null
   steps: SolveStepTransporte[]
+}
+
+// ── Redes ───────────────────────────────────────────────────────────────────
+
+export type MetodoRed =
+  | 'DIJKSTRA'
+  | 'KRUSKAL'
+  | 'EDMONDS_KARP'
+  | 'FLUJO_COSTO_MINIMO'
+  | 'ASIGNACION'
+
+// Campos nullable según el método: peso → DIJKSTRA/KRUSKAL ·
+// capacidad → EDMONDS_KARP/FLUJO_COSTO_MINIMO · costo → FLUJO_COSTO_MINIMO
+export interface Arista {
+  origen: string
+  destino: string
+  peso?: number | null
+  capacidad?: number | null
+  costo?: number | null
+}
+
+export interface ModeloRed {
+  nodos: string[] | null
+  aristas: Arista[] | null
+  dirigido: boolean | null
+  metodo: MetodoRed
+  fuente: string | null
+  sumidero: string | null
+  // Solo ASIGNACION (los campos de grafo van null)
+  agentes: string[] | null
+  tareas: string[] | null
+  matrizCostos: number[][] | null
+}
+
+export interface SolucionRed {
+  distancias: Record<string, number> | null   // DIJKSTRA
+  rutaOptima: string[] | null                 // DIJKSTRA (si hubo sumidero)
+  aristasSolucion: Arista[] | null            // ruta/árbol/arcos con flujo/pares
+  flujoPorArco: Record<string, number> | null // clave "origen->destino"
+  asignacion: Record<string, string> | null   // agente → tarea (sin ficticios)
+  valorObjetivo: number | null
+  flujoTotal: number | null
+  costoTotal: number | null
+}
+
+export type EstadoArista = 'normal' | 'activa' | 'solucion' | 'descartada'
+
+// Arista tal como llega en steps[].datos: con su estado en ESE paso.
+export interface AristaPaso extends Arista {
+  estado?: EstadoArista
+  flujo?: number | null
+}
+
+export interface StepDatosRed {
+  tipo: 'REDES'
+  metodo: MetodoRed
+  nodos: string[]
+  aristas: AristaPaso[]
+  fuente?: string | null
+  sumidero?: string | null
+  // Dijkstra
+  nodoActual?: string
+  asentados?: string[]
+  distancias?: Record<string, number>
+  rutaOptima?: string[]
+  distancia?: number
+  // Kruskal
+  aristaEvaluada?: string
+  pesoAcumulado?: number
+  pesoTotal?: number
+  // Edmonds-Karp / Flujo de costo mínimo
+  camino?: string[]
+  cuelloBotella?: number
+  flujoTotal?: number
+  costoUnitario?: number
+  costoAcumulado?: number
+  costoTotal?: number
+  // Asignación
+  agentes?: string[]
+  tareas?: string[]
+  asignacion?: Record<string, string>
+  status?: SolveStatus
+}
+
+export interface SolveStepRed {
+  numero: number
+  titulo: string
+  descripcion: string
+  datos: StepDatosRed
+}
+
+export interface SolveResultRed {
+  status: SolveStatus
+  solution: SolucionRed | null
+  steps: SolveStepRed[]
 }
