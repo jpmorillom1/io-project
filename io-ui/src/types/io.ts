@@ -84,6 +84,7 @@ export interface ChatResponse {
   resultadoTransporte: SolveResultTransporte | null
   resultadoRed: SolveResultRed | null
   resultadoEntero: SolveResultEntera | null
+  resultadoInventario: SolveResultInventario | null
   solicitudAprobacion: SolicitudAprobacion | null
 }
 
@@ -93,14 +94,15 @@ export interface ChatResponse {
 
 export type MetodoResolucion =
   | 'SIMPLEX' | 'GRAN_M' | 'DOS_FASES' | 'GRAFICO'
-  | 'TRANSPORTE' | 'REDES' | 'BRANCH_AND_BOUND'
+  | 'TRANSPORTE' | 'REDES' | 'BRANCH_AND_BOUND' | 'INVENTARIO'
 
 export interface SolicitudAprobacion {
   solicitudId: string
   metodo: MetodoResolucion
   // El modelo es genérico: ModeloLP para métodos LP/gráfico, ModeloTransporte
-  // para TRANSPORTE, ModeloRed para REDES, ModeloEntero para BRANCH_AND_BOUND.
-  modelo: ModeloLP | ModeloTransporte | ModeloRed | ModeloEntero
+  // para TRANSPORTE, ModeloRed para REDES, ModeloEntero para BRANCH_AND_BOUND,
+  // ModeloInventario para INVENTARIO.
+  modelo: ModeloLP | ModeloTransporte | ModeloRed | ModeloEntero | ModeloInventario
 }
 
 export interface DecisionAprobacionRequest {
@@ -418,4 +420,79 @@ export interface SolveResultEntera {
   status: SolveStatus
   solution: SolucionEntera | null
   steps: SolveStepEntera[]
+}
+
+// ── Inventarios (modelos deterministas) ───────────────────────────────────────
+
+export type MetodoInventario =
+  | 'EOQ_BASICO' | 'EOQ_DESCUENTOS' | 'EOQ_FALTANTES'
+  | 'PRODUCCION_ECONOMICA' | 'PUNTO_REORDEN'
+
+export interface TramoDescuento {
+  cantidadMinima: number
+  precioUnitario: number
+}
+
+// Body de los endpoints /api/v1/inventario/*. Solo se envían los campos que
+// aplican al submodelo; el endpoint fuerza el metodo, así que es opcional.
+export interface ModeloInventario {
+  metodo?: MetodoInventario
+  demanda: number
+  costoOrden: number
+  costoMantener?: number          // todos menos descuentos-con-tasa
+  costoFaltante?: number          // solo EOQ_FALTANTES
+  tasaProduccion?: number         // solo PRODUCCION_ECONOMICA (P > demanda)
+  leadTimeDias?: number           // solo PUNTO_REORDEN
+  diasHabiles?: number            // solo PUNTO_REORDEN (def. 360)
+  tasaMantenerPorcentaje?: number // solo EOQ_DESCUENTOS (fracción del precio)
+  tramos?: TramoDescuento[]       // solo EOQ_DESCUENTOS
+}
+
+// Fila de la comparativa de EOQ con descuentos (una por tramo evaluado).
+export interface ComparativaTramo {
+  precioUnitario: number
+  cantidad: number
+  costoTotal: number
+  factible: boolean
+}
+
+// Record unificado: solo los campos del submodelo resuelto vienen non-null.
+export interface SolucionInventario {
+  cantidadOptima: number                 // Q*
+  costoTotalAnual: number                // en descuentos INCLUYE la compra
+  costoOrdenarAnual: number
+  costoMantenerAnual: number
+  numeroPedidos: number | null           // N = D/Q*
+  tiempoCicloDias: number | null         // T
+  nivelMaximoInventario: number | null   // Imax (POQ) o S (faltantes)
+  faltanteMaximo: number | null          // solo faltantes
+  costoFaltanteAnual: number | null      // solo faltantes
+  puntoReorden: number | null            // R, solo punto de reorden
+  demandaDiaria: number | null           // d, solo punto de reorden
+  costoCompraAnual: number | null        // D·C, solo descuentos
+  precioUnitarioOptimo: number | null    // solo descuentos
+  comparativa: ComparativaTramo[] | null // solo descuentos
+  interpretacionPolitica: string
+}
+
+// datos de un paso de inventario (paso del cálculo, no iteración)
+export interface InventarioStepDatos {
+  tipo: 'INVENTARIO'
+  metodo: MetodoInventario
+  formula?: string       // fórmula simbólica
+  sustitucion?: string   // fórmula con números sustituidos
+  resultado?: number     // valor computado en el paso
+}
+
+export interface SolveStepInventario {
+  numero: number
+  titulo: string
+  descripcion: string
+  datos: InventarioStepDatos
+}
+
+export interface SolveResultInventario {
+  status: SolveStatus
+  solution: SolucionInventario | null
+  steps: SolveStepInventario[]
 }

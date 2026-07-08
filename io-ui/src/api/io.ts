@@ -3,6 +3,7 @@ import type {
   DecisionAprobacionRequest, ModeloTransporte, SolveResultTransporte, MetodoTransporte,
   ModeloRed, SolveResultRed, MetodoRed,
   ModeloEntero, SolveResultEntera,
+  ModeloInventario, SolveResultInventario, MetodoInventario,
 } from '@/types/io'
 
 const API_BASE = 'http://localhost:8080/api/v1'
@@ -86,6 +87,26 @@ export async function resolverRed(modelo: ModeloRed): Promise<SolveResultRed> {
 
 export async function resolverBranchAndBound(modelo: ModeloEntero): Promise<SolveResultEntera> {
   const res = await fetch(`${API_BASE}/entera/branch-and-bound`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(modelo),
+  })
+  return handleResponse(res)
+}
+
+const RUTA_INVENTARIO: Record<MetodoInventario, string> = {
+  EOQ_BASICO: 'eoq-basico',
+  EOQ_DESCUENTOS: 'eoq-descuentos',
+  EOQ_FALTANTES: 'eoq-faltantes',
+  PRODUCCION_ECONOMICA: 'produccion-economica',
+  PUNTO_REORDEN: 'punto-reorden',
+}
+
+export async function resolverInventario(
+  metodo: MetodoInventario,
+  modelo: ModeloInventario
+): Promise<SolveResultInventario> {
+  const res = await fetch(`${API_BASE}/inventario/${RUTA_INVENTARIO[metodo]}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(modelo),

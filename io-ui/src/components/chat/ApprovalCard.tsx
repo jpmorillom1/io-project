@@ -2,8 +2,8 @@ import { useState, type CSSProperties } from 'react'
 import { Button } from '@/components/ui/button'
 import { Check, X, ShieldQuestion } from 'lucide-react'
 import type {
-  SolicitudAprobacion, ModeloLP, ModeloTransporte, ModeloRed, ModeloEntero, MetodoResolucion,
-  MetodoTransporte, MetodoRed, TipoRestriccion, TipoVariable,
+  SolicitudAprobacion, ModeloLP, ModeloTransporte, ModeloRed, ModeloEntero, ModeloInventario,
+  MetodoResolucion, MetodoTransporte, MetodoRed, MetodoInventario, TipoRestriccion, TipoVariable,
 } from '@/types/io'
 
 interface Props {
@@ -20,12 +20,21 @@ const METODO_LABEL: Record<MetodoResolucion, string> = {
   TRANSPORTE: 'Transporte',
   REDES: 'Redes',
   BRANCH_AND_BOUND: 'Branch & Bound',
+  INVENTARIO: 'Inventarios',
 }
 
 const TIPO_VAR_LABEL: Record<TipoVariable, string> = {
   ENTERA: 'entera',
   BINARIA: 'binaria',
   CONTINUA: 'continua',
+}
+
+const METODO_INVENTARIO_LABEL: Record<MetodoInventario, string> = {
+  EOQ_BASICO: 'EOQ básico',
+  EOQ_DESCUENTOS: 'EOQ con descuentos',
+  EOQ_FALTANTES: 'EOQ con faltantes',
+  PRODUCCION_ECONOMICA: 'Producción económica',
+  PUNTO_REORDEN: 'Punto de reorden',
 }
 
 const METODO_TRANSPORTE_LABEL: Record<MetodoTransporte, string> = {
@@ -189,6 +198,37 @@ function ResumenEntero({ modelo }: { modelo: ModeloEntero }) {
   )
 }
 
+/** Resumen de parámetros de un modelo de inventario para la tarjeta de aprobación. */
+function ResumenInventario({ modelo }: { modelo: ModeloInventario }) {
+  const filas: Array<[string, number | undefined]> = [
+    ['D (demanda)', modelo.demanda],
+    ['K (ordenar)', modelo.costoOrden],
+    ['H (mantener)', modelo.costoMantener],
+    ['b (faltante)', modelo.costoFaltante],
+    ['P (producción)', modelo.tasaProduccion],
+    ['L (lead time días)', modelo.leadTimeDias],
+    ['Días hábiles', modelo.diasHabiles],
+    ['i (tasa mantener)', modelo.tasaMantenerPorcentaje],
+  ]
+  return (
+    <>
+      {filas
+        .filter(([, v]) => typeof v === 'number')
+        .map(([label, v]) => (
+          <p key={label}>
+            <span style={{ color: 'var(--ij-text-secondary)' }}>{label} = </span>
+            {v}
+          </p>
+        ))}
+      {modelo.tramos && modelo.tramos.length > 0 && (
+        <p style={{ color: 'var(--ij-teal)' }}>
+          {modelo.tramos.length} tramo(s) de precio
+        </p>
+      )}
+    </>
+  )
+}
+
 /**
  * Tarjeta Human-in-the-Loop: el tutor quiere ejecutar un solver y espera la
  * decisión del estudiante. Rechazar pide un comentario que re-alimenta al tutor.
@@ -203,11 +243,15 @@ export function ApprovalCard({ solicitud, onDecidir, disabled }: Props) {
   const modeloR = esRed ? (solicitud.modelo as ModeloRed) : null
   const esEntero = solicitud.metodo === 'BRANCH_AND_BOUND'
   const modeloE = esEntero ? (solicitud.modelo as ModeloEntero) : null
+  const esInventario = solicitud.metodo === 'INVENTARIO'
+  const modeloI = esInventario ? (solicitud.modelo as ModeloInventario) : null
   const etiquetaMetodo = modeloT
     ? `Transporte · ${METODO_TRANSPORTE_LABEL[modeloT.metodo]}`
     : modeloR
       ? `Redes · ${METODO_RED_LABEL[modeloR.metodo]}`
-      : METODO_LABEL[solicitud.metodo]
+      : modeloI && modeloI.metodo
+        ? `Inventarios · ${METODO_INVENTARIO_LABEL[modeloI.metodo]}`
+        : METODO_LABEL[solicitud.metodo]
 
   return (
     <div
@@ -240,6 +284,8 @@ export function ApprovalCard({ solicitud, onDecidir, disabled }: Props) {
           <ResumenRed modelo={modeloR} />
         ) : modeloE ? (
           <ResumenEntero modelo={modeloE} />
+        ) : modeloI ? (
+          <ResumenInventario modelo={modeloI} />
         ) : (
           lineasModelo(solicitud.modelo as ModeloLP).map((linea, i) => (
             <p key={i} className={i === 0 ? 'font-semibold' : undefined}>

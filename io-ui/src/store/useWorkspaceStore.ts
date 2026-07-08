@@ -3,6 +3,7 @@ import type {
   ModeloLP, SolveResult, SolveResultGrafico, WorkspaceStatus, ValidacionResponse,
   ModeloTransporte, SolveResultTransporte, ModeloRed, SolveResultRed,
   ModeloEntero, SolveResultEntera,
+  ModeloInventario, SolveResultInventario,
 } from '@/types/io'
 
 type ActualizacionIA = 'modelo' | 'validacion' | 'resultado' | null
@@ -24,6 +25,8 @@ interface WorkspaceStore {
   resultadoRed: SolveResultRed | null
   modeloEntero: ModeloEntero | null
   resultadoEntero: SolveResultEntera | null
+  modeloInventario: ModeloInventario | null
+  resultadoInventario: SolveResultInventario | null
   validado: boolean
   isChatBusy: boolean
   ultimaActualizacionIA: ActualizacionIA
@@ -43,6 +46,8 @@ interface WorkspaceStore {
   setResultadoRed: (r: SolveResultRed | null) => void
   setModeloEntero: (m: ModeloEntero | null) => void
   setResultadoEntero: (r: SolveResultEntera | null) => void
+  setModeloInventario: (m: ModeloInventario | null) => void
+  setResultadoInventario: (r: SolveResultInventario | null) => void
   setValidado: (v: boolean) => void
   resetResultado: () => void
   setValidacion: (v: ValidacionResponse) => void
@@ -67,6 +72,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
   resultadoRed: null,
   modeloEntero: null,
   resultadoEntero: null,
+  modeloInventario: null,
+  resultadoInventario: null,
   validado: false,
   isChatBusy: false,
   ultimaActualizacionIA: null,
@@ -86,8 +93,10 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
   setResultadoRed: (resultadoRed) => set({ resultadoRed }),
   setModeloEntero: (modeloEntero) => set({ modeloEntero }),
   setResultadoEntero: (resultadoEntero) => set({ resultadoEntero }),
+  setModeloInventario: (modeloInventario) => set({ modeloInventario }),
+  setResultadoInventario: (resultadoInventario) => set({ resultadoInventario }),
   setValidado: (validado) => set({ validado }),
-  resetResultado: () => set({ resultado: null, resultadoGrafico: null, resultadoTransporte: null, resultadoRed: null, resultadoEntero: null, status: 'EDITING', validado: false }),
+  resetResultado: () => set({ resultado: null, resultadoGrafico: null, resultadoTransporte: null, resultadoRed: null, resultadoEntero: null, resultadoInventario: null, status: 'EDITING', validado: false }),
   setValidacion: (v) => set({
     erroresValidacion: v.erroresEncontrados,
     sugerenciasValidacion: v.sugerencias,

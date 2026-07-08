@@ -4,6 +4,7 @@ import { SimplexWorkspace } from '@/pages/lp/SimplexWorkspace'
 import { TransporteWorkspace } from '@/pages/transporte/TransporteWorkspace'
 import { RedesWorkspace } from '@/pages/redes/RedesWorkspace'
 import { EnteraWorkspace } from '@/pages/entera/EnteraWorkspace'
+import { InventarioWorkspace } from '@/pages/inventario/InventarioWorkspace'
 
 export default function App() {
   return (
@@ -14,6 +15,7 @@ export default function App() {
         <Route path="/transporte" element={<TransporteWorkspace />} />
         <Route path="/redes" element={<RedesWorkspace />} />
         <Route path="/pl-entera" element={<EnteraWorkspace />} />
+        <Route path="/inventario" element={<InventarioWorkspace />} />
       </Route>
     </Routes>
   )

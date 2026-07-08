@@ -15,7 +15,7 @@ const MODULOS: Modulo[] = [
   { id: 'redes', label: 'Redes', icon: Network, path: '/redes', disponible: true },
   { id: 'pl-entera', label: 'PL Entera', icon: Binary, path: '/pl-entera', disponible: true },
   { id: 'prog-din', label: 'Programación Dinámica', icon: Workflow, path: '/prog-din', disponible: false },
-  { id: 'inventario', label: 'Inventarios', icon: Package, path: '/inventario', disponible: false },
+  { id: 'inventario', label: 'Inventarios', icon: Package, path: '/inventario', disponible: true },
 ]
 
 export function ModuleRail() {
