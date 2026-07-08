@@ -1,5 +1,6 @@
 package jpap.dev.io_api.infrastructure.ai.hitl;
 
+import jpap.dev.io_api.application.entera.EnteraUseCase;
 import jpap.dev.io_api.application.lp.DosFasesUseCase;
 import jpap.dev.io_api.application.lp.GraficoUseCase;
 import jpap.dev.io_api.application.lp.GranMUseCase;
@@ -10,6 +11,9 @@ import jpap.dev.io_api.domain.common.ModeloResoluble;
 import jpap.dev.io_api.domain.common.SolveResult;
 import jpap.dev.io_api.domain.common.SolveStatus;
 import jpap.dev.io_api.domain.common.SolveStep;
+import jpap.dev.io_api.domain.entera.ModeloEntero;
+import jpap.dev.io_api.domain.entera.SolucionEntera;
+import jpap.dev.io_api.domain.entera.TipoVariable;
 import jpap.dev.io_api.domain.lp.ModeloLP;
 import jpap.dev.io_api.domain.lp.SolucionLP;
 import jpap.dev.io_api.domain.lp.grafico.PuntoVertice;
@@ -44,31 +48,36 @@ public class ResolucionEjecutor {
     private final GraficoUseCase graficoUseCase;
     private final TransporteUseCase transporteUseCase;
     private final RedUseCase redUseCase;
+    private final EnteraUseCase enteraUseCase;
 
     public ResolucionEjecutor(SimplexUseCase simplexUseCase,
                               GranMUseCase granMUseCase,
                               DosFasesUseCase dosFasesUseCase,
                               GraficoUseCase graficoUseCase,
                               TransporteUseCase transporteUseCase,
-                              RedUseCase redUseCase) {
+                              RedUseCase redUseCase,
+                              EnteraUseCase enteraUseCase) {
         this.simplexUseCase = simplexUseCase;
         this.granMUseCase = granMUseCase;
         this.dosFasesUseCase = dosFasesUseCase;
         this.graficoUseCase = graficoUseCase;
         this.transporteUseCase = transporteUseCase;
         this.redUseCase = redUseCase;
+        this.enteraUseCase = enteraUseCase;
     }
 
     /**
-     * Resultado de una ejecución aprobada. Solo uno de los cuatro resultados es non-null:
+     * Resultado de una ejecución aprobada. Solo uno de los cinco resultados es non-null:
      * resultado (tabular LP: Simplex/GranM/DosFases), resultadoGrafico (método gráfico),
-     * resultadoTransporte (métodos de transporte) o resultadoRed (problemas de redes).
+     * resultadoTransporte (métodos de transporte), resultadoRed (problemas de redes) o
+     * resultadoEntero (PL Entera por Branch &amp; Bound).
      */
     public record Ejecucion(
             SolveResult<SolucionLP> resultado,
             SolveResult<SolucionGrafica> resultadoGrafico,
             SolveResult<SolucionTransporte> resultadoTransporte,
             SolveResult<SolucionRed> resultadoRed,
+            SolveResult<SolucionEntera> resultadoEntero,
             String resumenParaTutor
     ) {}
 
@@ -78,20 +87,26 @@ public class ResolucionEjecutor {
         if (metodo == MetodoResolucion.TRANSPORTE) {
             ModeloTransporte mt = (ModeloTransporte) modelo;
             SolveResult<SolucionTransporte> resultado = transporteUseCase.resolver(mt);
-            return new Ejecucion(null, null, resultado, null, formatearTransporte(resultado, mt));
+            return new Ejecucion(null, null, resultado, null, null, formatearTransporte(resultado, mt));
         }
 
         if (metodo == MetodoResolucion.REDES) {
             ModeloRed mr = (ModeloRed) modelo;
             SolveResult<SolucionRed> resultado = redUseCase.resolver(mr);
-            return new Ejecucion(null, null, null, resultado, formatearRed(resultado, mr));
+            return new Ejecucion(null, null, null, resultado, null, formatearRed(resultado, mr));
+        }
+
+        if (metodo == MetodoResolucion.BRANCH_AND_BOUND) {
+            ModeloEntero me = (ModeloEntero) modelo;
+            SolveResult<SolucionEntera> resultado = enteraUseCase.resolver(me);
+            return new Ejecucion(null, null, null, null, resultado, formatearEntero(resultado, me));
         }
 
         ModeloLP mlp = (ModeloLP) modelo;
 
         if (metodo == MetodoResolucion.GRAFICO) {
             SolveResult<SolucionGrafica> resultado = graficoUseCase.resolver(mlp);
-            return new Ejecucion(null, resultado, null, null, formatearGrafico(resultado));
+            return new Ejecucion(null, resultado, null, null, null, formatearGrafico(resultado));
         }
 
         SolveResult<SolucionLP> resultado = switch (metodo) {
@@ -101,8 +116,9 @@ public class ResolucionEjecutor {
             case GRAFICO -> throw new IllegalStateException("cubierto arriba");
             case TRANSPORTE -> throw new IllegalStateException("cubierto arriba");
             case REDES -> throw new IllegalStateException("cubierto arriba");
+            case BRANCH_AND_BOUND -> throw new IllegalStateException("cubierto arriba");
         };
-        return new Ejecucion(resultado, null, null, null, formatearTabular(resultado, metodo));
+        return new Ejecucion(resultado, null, null, null, null, formatearTabular(resultado, metodo));
     }
 
     // ─── formato para el tutor (movido desde las @Tool de resolución) ────────────
@@ -115,6 +131,7 @@ public class ResolucionEjecutor {
             case GRAFICO -> "Gráfico";
             case TRANSPORTE -> "Transporte";   // no se alcanza: transporte se formatea aparte
             case REDES -> "Redes";             // no se alcanza: redes se formatea aparte
+            case BRANCH_AND_BOUND -> "Branch & Bound"; // no se alcanza: PL Entera se formatea aparte
         };
         StringBuilder sb = new StringBuilder();
         sb.append("=== RESULTADO DEL SOLVER (").append(nombre).append(") ===\n");
@@ -365,6 +382,71 @@ public class ResolucionEjecutor {
         return sb.toString();
     }
 
+    private String formatearEntero(SolveResult<SolucionEntera> r, ModeloEntero modelo) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("=== RESULTADO DEL SOLVER (PL Entera — Branch & Bound) ===\n");
+        sb.append("Estado: ").append(r.status().name()).append("\n");
+
+        if (r.status() == SolveStatus.NO_ACOTADO) {
+            sb.append("El problema NO ESTÁ ACOTADO: la relajación lineal crece sin límite,\n");
+            sb.append("así que el problema entero tampoco tiene óptimo finito.\n");
+            sb.append("Pregunta al estudiante si falta alguna restricción que lo limite.\n");
+            return sb.toString();
+        }
+
+        if (r.status() == SolveStatus.INFACTIBLE || r.solution() == null) {
+            sb.append("El problema es INFACTIBLE en enteros: ningún punto que cumpla las\n");
+            sb.append("restricciones toma valores enteros/binarios en todas las variables exigidas.\n");
+            sb.append("Pregunta al estudiante si las restricciones o las cotas son demasiado ajustadas.\n");
+            return sb.toString();
+        }
+
+        SolucionEntera sol = r.solution();
+        List<String> variables = modelo.relajacion().variables();
+
+        sb.append("Valor óptimo ENTERO Z* = ").append(sol.valorOptimo()).append("\n");
+        sb.append("Óptimo de la relajación LP (raíz) = ").append(sol.valorRelajacion())
+          .append("  →  brecha de integralidad = ")
+          .append(round(Math.abs(sol.valorRelajacion() - sol.valorOptimo()))).append("\n");
+        sb.append("Nodos explorados en el árbol = ").append(sol.nodosExplorados()).append("\n");
+
+        sb.append("\n--- SOLUCIÓN ÓPTIMA ---\n");
+        for (int j = 0; j < variables.size(); j++) {
+            String nombre = variables.get(j);
+            double valor = sol.valores().getOrDefault(nombre, 0.0);
+            String etiquetaTipo = switch (modelo.tiposVariable().get(j)) {
+                case BINARIA -> valor >= 0.5 ? " (binaria: SÍ)" : " (binaria: NO)";
+                case ENTERA -> " (entera)";
+                case CONTINUA -> " (continua)";
+            };
+            sb.append("  ").append(nombre).append(" = ").append(valor).append(etiquetaTipo).append("\n");
+        }
+
+        boolean hayBinarias = modelo.tiposVariable().contains(TipoVariable.BINARIA);
+
+        sb.append("\n--- RECORRIDO DEL ÁRBOL (nodo → acción) ---\n");
+        for (SolveStep step : r.steps()) {
+            Object accion = step.datos().get("accion");
+            sb.append("Paso ").append(step.numero()).append(": ").append(step.titulo());
+            if (accion != null) sb.append("  [").append(accion).append("]");
+            sb.append("\n");
+        }
+
+        sb.append("\nLa interfaz ya muestra el árbol de Branch & Bound con cada nodo, su relajación y las podas. ");
+        sb.append("Guía al estudiante para que:\n");
+        sb.append("  1. JUSTIFIQUE por qué no se aceptan valores fraccionarios en este problema: la relajación LP daba ")
+          .append(sol.valorRelajacion())
+          .append(", pero una fracción no tiene sentido físico (no puedes abrir media sucursal, comprar 2.4 máquinas ni contratar 3.7 personas).\n");
+        sb.append("  2. Entienda por qué NO basta con redondear la relajación: el redondeo puede violar restricciones o no ser óptimo; Branch & Bound explora sistemáticamente las ramas x≤⌊v⌋ y x≥⌈v⌉ y poda las que no pueden mejorar.\n");
+        if (hayBinarias) {
+            sb.append("  3. INTERPRETE las variables binarias como decisiones sí/no (1 = se toma la opción, 0 = se descarta) en el contexto real del problema.\n");
+        } else {
+            sb.append("  3. INTERPRETE la solución entera en el contexto real del problema (cantidades indivisibles).\n");
+        }
+
+        return sb.toString();
+    }
+
     private String formatearGrafico(SolveResult<SolucionGrafica> r) {
         StringBuilder sb = new StringBuilder();
         sb.append("=== RESULTADO DEL SOLVER (Método Gráfico) ===\n");
@@ -414,5 +496,10 @@ public class ResolucionEjecutor {
         sb.append("  4. Verifique manualmente Z en cada vértice para validar el resultado.");
 
         return sb.toString();
+    }
+
+    private double round(double v) {
+        if (Math.abs(v) < 1e-9) return 0.0;
+        return Math.round(v * 1_000_000.0) / 1_000_000.0;
     }
 }

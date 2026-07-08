@@ -1,5 +1,6 @@
 package jpap.dev.io_api.infrastructure.ai.hitl;
 
+import jpap.dev.io_api.application.entera.EnteraService;
 import jpap.dev.io_api.application.lp.DosFasesService;
 import jpap.dev.io_api.application.lp.GraficoService;
 import jpap.dev.io_api.application.lp.GranMService;
@@ -7,6 +8,8 @@ import jpap.dev.io_api.application.lp.SimplexService;
 import jpap.dev.io_api.application.redes.RedService;
 import jpap.dev.io_api.application.transporte.TransporteService;
 import jpap.dev.io_api.domain.common.SolveStatus;
+import jpap.dev.io_api.domain.entera.ModeloEntero;
+import jpap.dev.io_api.domain.entera.TipoVariable;
 import jpap.dev.io_api.domain.lp.FuncionObjetivo;
 import jpap.dev.io_api.domain.lp.ModeloLP;
 import jpap.dev.io_api.domain.lp.Restriccion;
@@ -52,7 +55,8 @@ class ResolucionAprobadaWorkflowTest {
         registry = new SolicitudAprobacionRegistry();
         ResolucionEjecutor ejecutor = new ResolucionEjecutor(
                 new SimplexService(), new GranMService(), new DosFasesService(),
-                new GraficoService(), new TransporteService(), new RedService());
+                new GraficoService(), new TransporteService(), new RedService(),
+                new EnteraService());
         ResolucionAprobadaWorkflow workflow = new HitlConfig().resolucionAprobadaWorkflow(ejecutor, registry);
         executor = Executors.newVirtualThreadPerTaskExecutor();
         service = new AprobacionHumanaService(workflow, registry, executor);
@@ -176,6 +180,31 @@ class ResolucionAprobadaWorkflowTest {
         assertEquals(List.of("A", "C", "B", "D"),
                 desenlace.ejecucion().resultadoRed().solution().rutaOptima());
         assertTrue(desenlace.resumenParaTutor().contains("Redes"));
+    }
+
+    /** MAX 5x1 + 4x2, s.a. 6x1+4x2 ≤ 24, x1+2x2 ≤ 6, x1,x2 enteras → óptimo entero Z*=20 en (4,0). */
+    @Test
+    void aprobarConMetodoBranchAndBoundDevuelveResultadoEntero() {
+        ModeloEntero modelo = new ModeloEntero(
+                new ModeloLP(
+                        List.of("x1", "x2"),
+                        new FuncionObjetivo(List.of(5.0, 4.0), TipoObjetivo.MAXIMIZAR),
+                        List.of(
+                                new Restriccion(List.of(6.0, 4.0), TipoRestriccion.LEQ, 24),
+                                new Restriccion(List.of(1.0, 2.0), TipoRestriccion.LEQ, 6))),
+                List.of(TipoVariable.ENTERA, TipoVariable.ENTERA));
+
+        SolicitudAprobacion solicitud = service.solicitar("sesion-e", modelo, MetodoResolucion.BRANCH_AND_BOUND);
+        var desenlace = service.decidir(solicitud.solicitudId(), true, null);
+
+        assertNull(desenlace.ejecucion().resultado(), "PL entera no produce resultado tabular LP");
+        assertNull(desenlace.ejecucion().resultadoGrafico());
+        assertNull(desenlace.ejecucion().resultadoTransporte());
+        assertNull(desenlace.ejecucion().resultadoRed());
+        assertNotNull(desenlace.ejecucion().resultadoEntero());
+        assertEquals(SolveStatus.OPTIMO, desenlace.ejecucion().resultadoEntero().status());
+        assertEquals(20.0, desenlace.ejecucion().resultadoEntero().solution().valorOptimo(), 1e-6);
+        assertTrue(desenlace.resumenParaTutor().contains("PL Entera"));
     }
 
     @Test

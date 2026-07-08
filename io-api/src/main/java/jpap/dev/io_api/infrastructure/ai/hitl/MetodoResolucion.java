@@ -9,6 +9,8 @@ package jpap.dev.io_api.infrastructure.ai.hitl;
  * (Esquina Noroeste, Costo Mínimo, Vogel o MODI) viaja dentro del ModeloTransporte.
  * REDES agrupa los cinco problemas de redes; el submétodo concreto (Dijkstra,
  * Kruskal, Edmonds-Karp, Flujo de Costo Mínimo o Asignación) viaja dentro del ModeloRed.
+ * BRANCH_AND_BOUND resuelve Programación Lineal Entera (variables enteras/binarias); el
+ * detalle de integralidad viaja dentro del ModeloEntero.
  */
 public enum MetodoResolucion {
     SIMPLEX,
@@ -16,5 +18,6 @@ public enum MetodoResolucion {
     DOS_FASES,
     GRAFICO,
     TRANSPORTE,
-    REDES
+    REDES,
+    BRANCH_AND_BOUND
 }

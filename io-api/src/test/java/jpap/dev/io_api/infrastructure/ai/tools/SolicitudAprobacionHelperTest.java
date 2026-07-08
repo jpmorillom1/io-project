@@ -1,5 +1,6 @@
 package jpap.dev.io_api.infrastructure.ai.tools;
 
+import jpap.dev.io_api.application.entera.EnteraService;
 import jpap.dev.io_api.application.lp.DosFasesService;
 import jpap.dev.io_api.application.lp.GraficoService;
 import jpap.dev.io_api.application.lp.GranMService;
@@ -41,7 +42,8 @@ class SolicitudAprobacionHelperTest {
         SolicitudAprobacionRegistry registry = new SolicitudAprobacionRegistry();
         ResolucionEjecutor ejecutor = new ResolucionEjecutor(
                 new SimplexService(), new GranMService(), new DosFasesService(),
-                new GraficoService(), new TransporteService(), new RedService());
+                new GraficoService(), new TransporteService(), new RedService(),
+                new EnteraService());
         ResolucionAprobadaWorkflow workflow = new HitlConfig().resolucionAprobadaWorkflow(ejecutor, registry);
         executor = Executors.newVirtualThreadPerTaskExecutor();
         AprobacionHumanaService service = new AprobacionHumanaService(workflow, registry, executor);
