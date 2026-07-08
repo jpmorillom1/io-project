@@ -13,7 +13,7 @@ const MODULOS: Modulo[] = [
   { id: 'lp', label: 'Programación Lineal', icon: Sigma, path: '/lp', disponible: true },
   { id: 'transporte', label: 'Transporte', icon: Truck, path: '/transporte', disponible: true },
   { id: 'redes', label: 'Redes', icon: Network, path: '/redes', disponible: true },
-  { id: 'pl-entera', label: 'PL Entera', icon: Binary, path: '/pl-entera', disponible: false },
+  { id: 'pl-entera', label: 'PL Entera', icon: Binary, path: '/pl-entera', disponible: true },
   { id: 'prog-din', label: 'Programación Dinámica', icon: Workflow, path: '/prog-din', disponible: false },
   { id: 'inventario', label: 'Inventarios', icon: Package, path: '/inventario', disponible: false },
 ]

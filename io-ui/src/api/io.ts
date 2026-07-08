@@ -2,6 +2,7 @@ import type {
   ModeloLP, SolveResult, SolveResultGrafico, ChatResponse, ModeloSugeridoResponse, ValidacionResponse,
   DecisionAprobacionRequest, ModeloTransporte, SolveResultTransporte, MetodoTransporte,
   ModeloRed, SolveResultRed, MetodoRed,
+  ModeloEntero, SolveResultEntera,
 } from '@/types/io'
 
 const API_BASE = 'http://localhost:8080/api/v1'
@@ -76,6 +77,15 @@ const RUTA_RED: Record<MetodoRed, string> = {
 
 export async function resolverRed(modelo: ModeloRed): Promise<SolveResultRed> {
   const res = await fetch(`${API_BASE}/redes/${RUTA_RED[modelo.metodo]}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(modelo),
+  })
+  return handleResponse(res)
+}
+
+export async function resolverBranchAndBound(modelo: ModeloEntero): Promise<SolveResultEntera> {
+  const res = await fetch(`${API_BASE}/entera/branch-and-bound`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(modelo),

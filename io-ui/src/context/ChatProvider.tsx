@@ -2,11 +2,11 @@ import { createContext, useContext, useState, useEffect, type ReactNode } from '
 import { useNavigate, useLocation } from 'react-router'
 import { enviarMensaje, decidirAprobacion } from '@/api/io'
 import { useWorkspaceStore } from '@/store/useWorkspaceStore'
-import type { Mensaje, ChatResponse, SolicitudAprobacion, ModeloTransporte, ModeloRed } from '@/types/io'
+import type { Mensaje, ChatResponse, SolicitudAprobacion, ModeloTransporte, ModeloRed, ModeloEntero } from '@/types/io'
 
 const SESSION_KEY = 'io_sesion_id'
 
-type Modulo = 'lp' | 'transporte' | 'redes'
+type Modulo = 'lp' | 'transporte' | 'redes' | 'pl-entera'
 
 interface ChatContextValue {
   mensajes: Mensaje[]
@@ -24,6 +24,8 @@ const ChatContext = createContext<ChatContextValue | null>(null)
  * se adapte automáticamente (LP ⇄ Transporte ⇄ Redes) según lo que el chat detecte.
  */
 function moduloDeRespuesta(res: ChatResponse): Modulo | null {
+  if (res.resultadoEntero) return 'pl-entera'
+  if (res.solicitudAprobacion?.metodo === 'BRANCH_AND_BOUND') return 'pl-entera'
   if (res.resultadoRed) return 'redes'
   if (res.solicitudAprobacion?.metodo === 'REDES') return 'redes'
   if (res.resultadoTransporte) return 'transporte'
@@ -93,6 +95,11 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       store().setStatus('SOLVED')
       store().setUltimaActualizacionIA('resultado')
     }
+    if (res.resultadoEntero) {
+      store().setResultadoEntero(res.resultadoEntero)
+      store().setStatus('SOLVED')
+      store().setUltimaActualizacionIA('resultado')
+    }
     // Al pedir aprobación de un transporte, refleja el modelo en el editor de matriz.
     if (res.solicitudAprobacion?.metodo === 'TRANSPORTE') {
       store().setModeloTransporte(res.solicitudAprobacion.modelo as ModeloTransporte)
@@ -101,6 +108,11 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     // Ídem para redes: refleja el modelo en el editor de grafo.
     if (res.solicitudAprobacion?.metodo === 'REDES') {
       store().setModeloRed(res.solicitudAprobacion.modelo as ModeloRed)
+      store().setStatus('EDITING')
+    }
+    // Ídem para PL Entera: refleja el modelo en el editor (relajación + tipos).
+    if (res.solicitudAprobacion?.metodo === 'BRANCH_AND_BOUND') {
+      store().setModeloEntero(res.solicitudAprobacion.modelo as ModeloEntero)
       store().setStatus('EDITING')
     }
     // Una nueva solicitud de la misma sesión reemplaza la anterior en el backend;

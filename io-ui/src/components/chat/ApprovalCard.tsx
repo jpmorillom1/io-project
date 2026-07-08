@@ -2,8 +2,8 @@ import { useState, type CSSProperties } from 'react'
 import { Button } from '@/components/ui/button'
 import { Check, X, ShieldQuestion } from 'lucide-react'
 import type {
-  SolicitudAprobacion, ModeloLP, ModeloTransporte, ModeloRed, MetodoResolucion, MetodoTransporte,
-  MetodoRed, TipoRestriccion,
+  SolicitudAprobacion, ModeloLP, ModeloTransporte, ModeloRed, ModeloEntero, MetodoResolucion,
+  MetodoTransporte, MetodoRed, TipoRestriccion, TipoVariable,
 } from '@/types/io'
 
 interface Props {
@@ -19,6 +19,13 @@ const METODO_LABEL: Record<MetodoResolucion, string> = {
   GRAFICO: 'Método gráfico',
   TRANSPORTE: 'Transporte',
   REDES: 'Redes',
+  BRANCH_AND_BOUND: 'Branch & Bound',
+}
+
+const TIPO_VAR_LABEL: Record<TipoVariable, string> = {
+  ENTERA: 'entera',
+  BINARIA: 'binaria',
+  CONTINUA: 'continua',
 }
 
 const METODO_TRANSPORTE_LABEL: Record<MetodoTransporte, string> = {
@@ -165,6 +172,23 @@ function ResumenRed({ modelo }: { modelo: ModeloRed }) {
   )
 }
 
+/** Resumen de un modelo de PL Entera (relajación LP + tipos) para la tarjeta de aprobación. */
+function ResumenEntero({ modelo }: { modelo: ModeloEntero }) {
+  const rel = modelo.relajacion
+  const lineas = lineasModelo(rel)
+  const tipos = rel.variables
+    .map((v, i) => `${v}: ${TIPO_VAR_LABEL[modelo.tiposVariable[i] ?? 'ENTERA']}`)
+    .join(' · ')
+  return (
+    <>
+      {lineas.map((linea, i) => (
+        <p key={i} className={i === 0 ? 'font-semibold' : undefined}>{linea}</p>
+      ))}
+      <p style={{ color: 'var(--ij-teal)' }}>{tipos}</p>
+    </>
+  )
+}
+
 /**
  * Tarjeta Human-in-the-Loop: el tutor quiere ejecutar un solver y espera la
  * decisión del estudiante. Rechazar pide un comentario que re-alimenta al tutor.
@@ -177,6 +201,8 @@ export function ApprovalCard({ solicitud, onDecidir, disabled }: Props) {
   const modeloT = esTransporte ? (solicitud.modelo as ModeloTransporte) : null
   const esRed = solicitud.metodo === 'REDES'
   const modeloR = esRed ? (solicitud.modelo as ModeloRed) : null
+  const esEntero = solicitud.metodo === 'BRANCH_AND_BOUND'
+  const modeloE = esEntero ? (solicitud.modelo as ModeloEntero) : null
   const etiquetaMetodo = modeloT
     ? `Transporte · ${METODO_TRANSPORTE_LABEL[modeloT.metodo]}`
     : modeloR
@@ -212,6 +238,8 @@ export function ApprovalCard({ solicitud, onDecidir, disabled }: Props) {
           <MatrizTransporte modelo={modeloT} />
         ) : modeloR ? (
           <ResumenRed modelo={modeloR} />
+        ) : modeloE ? (
+          <ResumenEntero modelo={modeloE} />
         ) : (
           lineasModelo(solicitud.modelo as ModeloLP).map((linea, i) => (
             <p key={i} className={i === 0 ? 'font-semibold' : undefined}>

@@ -83,6 +83,7 @@ export interface ChatResponse {
   resultadoGrafico: SolveResultGrafico | null
   resultadoTransporte: SolveResultTransporte | null
   resultadoRed: SolveResultRed | null
+  resultadoEntero: SolveResultEntera | null
   solicitudAprobacion: SolicitudAprobacion | null
 }
 
@@ -90,14 +91,16 @@ export interface ChatResponse {
 // El tutor quiere resolver y espera la aprobación del estudiante.
 // El solver NO corre hasta enviar la decisión a POST /ai/chat/aprobacion.
 
-export type MetodoResolucion = 'SIMPLEX' | 'GRAN_M' | 'DOS_FASES' | 'GRAFICO' | 'TRANSPORTE' | 'REDES'
+export type MetodoResolucion =
+  | 'SIMPLEX' | 'GRAN_M' | 'DOS_FASES' | 'GRAFICO'
+  | 'TRANSPORTE' | 'REDES' | 'BRANCH_AND_BOUND'
 
 export interface SolicitudAprobacion {
   solicitudId: string
   metodo: MetodoResolucion
   // El modelo es genérico: ModeloLP para métodos LP/gráfico, ModeloTransporte
-  // para TRANSPORTE, ModeloRed para REDES.
-  modelo: ModeloLP | ModeloTransporte | ModeloRed
+  // para TRANSPORTE, ModeloRed para REDES, ModeloEntero para BRANCH_AND_BOUND.
+  modelo: ModeloLP | ModeloTransporte | ModeloRed | ModeloEntero
 }
 
 export interface DecisionAprobacionRequest {
@@ -361,4 +364,58 @@ export interface SolveResultRed {
   status: SolveStatus
   solution: SolucionRed | null
   steps: SolveStepRed[]
+}
+
+// ── PL Entera (Branch & Bound) ────────────────────────────────────────────────
+
+export type TipoVariable = 'ENTERA' | 'BINARIA' | 'CONTINUA'
+
+export interface ModeloEntero {
+  relajacion: ModeloLP            // variables/objetivo/restricciones de la relajación
+  tiposVariable: TipoVariable[]   // alineado por índice con relajacion.variables
+}
+
+export interface SolucionEntera {
+  valores: Record<string, number> // solución entera óptima
+  valorOptimo: number             // Z* entero
+  valorRelajacion: number         // óptimo LP de la raíz (para la brecha de integralidad)
+  nodosExplorados: number
+}
+
+export type AccionNodo = 'RAMIFICA' | 'INCUMBENTE' | 'PODA_COTA' | 'PODA_INFACTIBLE'
+
+// datos de un paso de Branch & Bound (nodo del árbol o paso final)
+export interface EnteraStepDatos {
+  // nodos del árbol
+  nodoId?: number
+  padreId?: number
+  rama?: string
+  estadoRelajacion?: string
+  zRelajacion?: number
+  valoresRelajacion?: Record<string, number>
+  accion?: AccionNodo
+  varRamificada?: string
+  valorFraccionario?: number
+  ramaIzquierda?: string
+  ramaDerecha?: string
+  // paso final
+  valores?: Record<string, number>
+  valorOptimo?: number
+  valorRelajacion?: number
+  brechaIntegralidad?: number
+  nodosExplorados?: number
+  status?: SolveStatus
+}
+
+export interface SolveStepEntera {
+  numero: number
+  titulo: string
+  descripcion: string
+  datos: EnteraStepDatos
+}
+
+export interface SolveResultEntera {
+  status: SolveStatus
+  solution: SolucionEntera | null
+  steps: SolveStepEntera[]
 }
