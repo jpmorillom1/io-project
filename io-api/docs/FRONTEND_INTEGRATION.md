@@ -14,6 +14,11 @@
 > tutor detecte. La visualización de grafos usa `components/shared/NetworkGraph.tsx` (SVG genérico,
 > reutilizable). Para el próximo módulo (Redes) sigue `docs/GUIA_REDES.md` — reusa NetworkGraph y
 > amplía `moduloDeRespuesta()`.
+>
+> **Backend disponible sin UI aún:** **Redes** y **PL Entera (Branch & Bound)** ya están completos
+> en el backend (REST + tool del chat + HITL), pero su frontend está pendiente. La sección 5 de
+> este documento cubre el contrato de **PL Entera**; su visualización natural es un **árbol de
+> nodos** (cada nodo = una relajación LP con su ramificación/poda).
 
 | Método | URL | Para qué |
 |--------|-----|----------|
@@ -22,6 +27,7 @@
 | POST | `/api/v1/lp/dos-fases` | Resolver PL — Dos Fases (≤, ≥, =) |
 | POST | `/api/v1/lp/grafico` | Resolver PL — Método gráfico (2 variables) |
 | POST | `/api/v1/transporte/{esquina-noroeste,costo-minimo,vogel,modi}` | Resolver Transporte (ver `API_CONTRACT.md`) |
+| POST | `/api/v1/entera/branch-and-bound` | Resolver PL Entera — Branch & Bound (variables enteras/binarias) |
 | POST | `/api/v1/ai/chat` | Chat socrático con el tutor Pivot |
 | POST | `/api/v1/ai/chat/aprobacion` | HITL: aprobar/rechazar la resolución pendiente |
 | POST | `/api/v1/ai/sugerir-modelo` | Extraer un `ModeloLP` desde texto libre |
@@ -207,7 +213,15 @@ Los tres últimos campos son **nullable**. Verifica siempre antes de usar:
 |---|---|---|
 | `modeloSugerido` | El tutor formuló el modelo LP | Pre-llenar el formulario |
 | `validacion` | El tutor evaluó el modelo del estudiante | Mostrar errores inline (o confirmar válido) |
-| `resultado` | El tutor resolvió el problema | Mostrar tableau con navegación de pasos |
+| `resultado` | Se resolvió un LP tabular (Simplex/Gran M/Dos Fases) | Mostrar tableau con navegación de pasos |
+| `resultadoGrafico` | Se resolvió por método gráfico (2 variables) | Mostrar la región factible y los vértices |
+| `resultadoTransporte` | Se resolvió un problema de transporte | Mostrar la tabla de transporte |
+| `resultadoRed` | Se resolvió un problema de redes | Mostrar el grafo con la solución |
+| `resultadoEntero` | Se resolvió PL Entera (Branch & Bound) | Mostrar el árbol de nodos (ver sección 5) |
+| `solicitudAprobacion` | El tutor quiere resolver y espera aprobación (HITL) | Mostrar tarjeta Aprobar/Rechazar |
+
+> Como máximo **uno** de los `resultado*` viene non-null en un mismo turno; el resto de este
+> ejemplo muestra solo `resultado` por brevedad, pero la estructura es análoga para los demás.
 
 ### Ejemplo — tutor sugiere modelo
 
@@ -400,6 +414,162 @@ Content-Type: application/json
 
 ---
 
+## 5. Resolver PL Entera — Branch & Bound (sin IA)
+
+Endpoint puro del solver de **Programación Lineal Entera**. Úsalo cuando el modelo ya está
+construido y una o más variables deben ser **enteras** (cantidades indivisibles) o **binarias**
+(decisiones sí/no: seleccionar proyecto, abrir/cerrar sucursal, comprar/no comprar, turnos, rutas).
+
+El modelo reutiliza el `ModeloLP` como **relajación** (variables, objetivo, restricciones) y añade
+`tiposVariable`, una lista **alineada por índice** con `variables`. Acepta `LEQ`, `GEQ` y `EQ`
+(con `rhs ≥ 0`) — internamente cada relajación se resuelve con Gran M.
+
+### Request
+
+```
+POST /api/v1/entera/branch-and-bound
+Content-Type: application/json
+```
+
+```json
+{
+  "relajacion": {
+    "variables": ["x1", "x2"],
+    "objetivo": { "coeficientes": [5, 4], "tipo": "MAXIMIZAR" },
+    "restricciones": [
+      { "coeficientes": [6, 4], "tipo": "LEQ", "rhs": 24 },
+      { "coeficientes": [1, 2], "tipo": "LEQ", "rhs": 6 }
+    ]
+  },
+  "tiposVariable": ["ENTERA", "ENTERA"]
+}
+```
+
+**Valores válidos de `tiposVariable[i]`:** `"ENTERA"` | `"BINARIA"` | `"CONTINUA"`.
+- `BINARIA` fuerza `x ∈ {0,1}` (el solver añade `x ≤ 1` automáticamente; no lo pongas tú).
+- `CONTINUA` deja la variable relajada (modelo mixto MILP).
+
+### Response exitosa
+
+```json
+{
+  "status": "OPTIMO",
+  "solution": {
+    "valores": { "x1": 4.0, "x2": 0.0 },
+    "valorOptimo": 20.0,
+    "valorRelajacion": 21.0,
+    "nodosExplorados": 5
+  },
+  "steps": [
+    {
+      "numero": 0,
+      "titulo": "Nodo 0 — Relajación LP inicial (raíz)",
+      "descripcion": "La variable 'x2' = 1.5 es fraccionaria. Se ramifica en 'x2 <= 1' y 'x2 >= 2'.",
+      "datos": {
+        "nodoId": 0,
+        "padreId": -1,
+        "rama": "Relajación LP inicial (raíz)",
+        "estadoRelajacion": "OPTIMO",
+        "zRelajacion": 21.0,
+        "valoresRelajacion": { "x1": 3.0, "x2": 1.5 },
+        "accion": "RAMIFICA",
+        "varRamificada": "x2",
+        "valorFraccionario": 1.5,
+        "ramaIzquierda": "x2 <= 1",
+        "ramaDerecha": "x2 >= 2"
+      }
+    },
+    {
+      "numero": 2,
+      "titulo": "Nodo 4 — x1 <= 3",
+      "descripcion": "Solución ENTERA factible con Z = 19.0. Es el nuevo mejor incumbente.",
+      "datos": {
+        "nodoId": 4,
+        "padreId": 2,
+        "rama": "x1 <= 3",
+        "estadoRelajacion": "OPTIMO",
+        "zRelajacion": 19.0,
+        "valoresRelajacion": { "x1": 3.0, "x2": 1.0 },
+        "accion": "INCUMBENTE"
+      }
+    },
+    {
+      "numero": 4,
+      "titulo": "Nodo 1 — x2 >= 2",
+      "descripcion": "z relajado = 18.0 no mejora el incumbente Z* = 20.0: la rama se poda por cota.",
+      "datos": {
+        "nodoId": 1,
+        "padreId": 0,
+        "rama": "x2 >= 2",
+        "estadoRelajacion": "OPTIMO",
+        "zRelajacion": 18.0,
+        "valoresRelajacion": { "x1": 2.0, "x2": 2.0 },
+        "accion": "PODA_COTA"
+      }
+    },
+    {
+      "numero": 5,
+      "titulo": "Solución óptima entera encontrada",
+      "descripcion": "Z* = 20.0 con la asignación entera óptima. La relajación LP de la raíz daba 21.0 (brecha de integralidad = 1.0): por eso no basta con redondear la relajación.",
+      "datos": {
+        "valores": { "x1": 4.0, "x2": 0.0 },
+        "valorOptimo": 20.0,
+        "valorRelajacion": 21.0,
+        "brechaIntegralidad": 1.0,
+        "nodosExplorados": 5,
+        "status": "OPTIMO"
+      }
+    }
+  ]
+}
+```
+
+> El ejemplo está recortado: la lista `steps` real incluye **un paso por nodo explorado** en el
+> orden en que Branch & Bound los visita (DFS), más el paso final.
+
+### Estructura de `steps[i].datos` (nodos del árbol)
+
+| Campo | Tipo | Presente en |
+|-------|------|-------------|
+| `nodoId` | `number` | pasos de nodo |
+| `padreId` | `number` | pasos de nodo (`-1` en la raíz) |
+| `rama` | `string` | pasos de nodo (la restricción que define el nodo, ej. `"x1 <= 3"`) |
+| `estadoRelajacion` | `string` | pasos de nodo (`OPTIMO`/`INFACTIBLE`/… o `SIN_SOLUCION`) |
+| `zRelajacion` | `number` | pasos de nodo con relajación resuelta |
+| `valoresRelajacion` | `Record<string,number>` | pasos de nodo con relajación resuelta |
+| `accion` | `string` | pasos de nodo — ver tabla abajo |
+| `varRamificada`, `valorFraccionario`, `ramaIzquierda`, `ramaDerecha` | `string`/`number` | solo cuando `accion="RAMIFICA"` |
+| `valores`, `valorOptimo`, `valorRelajacion`, `brechaIntegralidad`, `nodosExplorados` | — | solo el paso final |
+
+**Valores de `accion`:**
+
+| `accion` | Significado | Cómo pintarlo |
+|----------|-------------|---------------|
+| `RAMIFICA` | La relajación es fraccionaria → se abren dos hijos | nodo con dos ramas hacia abajo |
+| `INCUMBENTE` | Solución entera factible que mejora el mejor valor | nodo resaltado (candidato/mejor) |
+| `PODA_COTA` | La relajación no puede superar el incumbente → se poda | nodo/rama atenuado o tachado |
+| `PODA_INFACTIBLE` | La relajación del nodo es infactible → se poda | nodo/rama atenuado o tachado |
+
+### `status` y campos de `solution`
+
+`status` usa la misma enumeración que el resto (`OPTIMO`/`INFACTIBLE`/`NO_ACOTADO`/…).
+`solution` es `null` cuando `status` es `INFACTIBLE` (no hay solución entera factible) o `NO_ACOTADO`.
+
+- `valores` — solución entera óptima por variable.
+- `valorOptimo` — `Z*` entero.
+- `valorRelajacion` — óptimo de la relajación LP en la raíz. La diferencia `|valorRelajacion − valorOptimo|`
+  es la **brecha de integralidad**: úsala para explicar por qué **redondear la relajación no es válido**.
+- `nodosExplorados` — tamaño del árbol recorrido.
+
+### Errores HTTP 400
+
+```json
+{ "error": "tiposVariable debe tener un tipo por cada variable (2)." }
+{ "error": "El modelo necesita al menos una variable." }
+```
+
+---
+
 ## Flujo completo recomendado para la UI
 
 ```
@@ -504,6 +674,54 @@ interface SolucionLP {
   rangosSensibilidad: RangosSensibilidad
 }
 
+// ── PL Entera (Branch & Bound) ──────────────────────────────────────────────
+type TipoVariable = 'ENTERA' | 'BINARIA' | 'CONTINUA'
+
+interface ModeloEntero {
+  relajacion: ModeloLP                  // variables/objetivo/restricciones de la relajación
+  tiposVariable: TipoVariable[]         // alineado por índice con relajacion.variables
+}
+
+interface SolucionEntera {
+  valores: Record<string, number>       // solución entera óptima
+  valorOptimo: number                   // Z* entero
+  valorRelajacion: number               // óptimo LP de la raíz (para la brecha de integralidad)
+  nodosExplorados: number
+}
+
+type AccionNodo = 'RAMIFICA' | 'INCUMBENTE' | 'PODA_COTA' | 'PODA_INFACTIBLE'
+
+// datos de un paso de Branch & Bound (nodo del árbol o paso final)
+interface EnteraStepDatos {
+  // nodos del árbol
+  nodoId?: number
+  padreId?: number
+  rama?: string
+  estadoRelajacion?: string
+  zRelajacion?: number
+  valoresRelajacion?: Record<string, number>
+  accion?: AccionNodo
+  varRamificada?: string
+  valorFraccionario?: number
+  ramaIzquierda?: string
+  ramaDerecha?: string
+  // paso final
+  valores?: Record<string, number>
+  valorOptimo?: number
+  valorRelajacion?: number
+  brechaIntegralidad?: number
+  nodosExplorados?: number
+  status?: SolveStatus
+}
+
+// SolveResult<SolucionEntera>: reutiliza SolveStep pero con datos = EnteraStepDatos
+interface EnteraStep { numero: number; titulo: string; descripcion: string; datos: EnteraStepDatos }
+interface SolveResultEntera {
+  status: SolveStatus
+  solution: SolucionEntera | null
+  steps: EnteraStep[]
+}
+
 interface StepDatos {
   encabezados: string[]
   tableau: number[][]
@@ -533,23 +751,33 @@ interface ChatRequest {
   mensaje: string
 }
 
-// Los cinco campos inferiores son nullable — verificar siempre antes de usar
+// Todos los campos tras `respuesta` son nullable — verificar siempre antes de usar.
+// Como máximo UNO de los `resultado*` viene non-null en un mismo turno.
 interface ChatResponse {
   sesionId: string
   respuesta: string
-  modeloSugerido: ModeloLP | null        // non-null → pre-llenar formulario
-  validacion: ValidacionResponse | null  // non-null → mostrar errores inline
-  resultado: SolveResult | null          // non-null → mostrar tableau
-  resultadoGrafico: SolveResult | null   // non-null → mostrar el gráfico (2 variables)
+  modeloSugerido: ModeloLP | null              // non-null → pre-llenar formulario
+  validacion: ValidacionResponse | null        // non-null → mostrar errores inline
+  resultado: SolveResult | null                // non-null → tableau LP (Simplex/Gran M/Dos Fases)
+  resultadoGrafico: SolveResult | null         // non-null → gráfico (2 variables)
+  resultadoTransporte: SolveResult | null       // non-null → tabla de transporte
+  resultadoRed: SolveResult | null              // non-null → grafo de redes
+  resultadoEntero: SolveResultEntera | null     // non-null → árbol de Branch & Bound (PL Entera)
   solicitudAprobacion: SolicitudAprobacion | null  // non-null → mostrar tarjeta Aprobar/Rechazar
 }
 
 // Human-in-the-Loop: el tutor quiere resolver y espera la aprobación del estudiante.
 // El solver NO corre hasta que se envíe la decisión a POST /ai/chat/aprobacion.
+type MetodoResolucion =
+  | 'SIMPLEX' | 'GRAN_M' | 'DOS_FASES' | 'GRAFICO'
+  | 'TRANSPORTE' | 'REDES' | 'BRANCH_AND_BOUND'
+
 interface SolicitudAprobacion {
   solicitudId: string
-  metodo: 'SIMPLEX' | 'GRAN_M' | 'DOS_FASES' | 'GRAFICO'
-  modelo: ModeloLP
+  metodo: MetodoResolucion
+  // el modelo varía según el método: ModeloLP (LP/gráfico), ModeloTransporte,
+  // ModeloRed o ModeloEntero (BRANCH_AND_BOUND). La UI decide cómo pintarlo según `metodo`.
+  modelo: ModeloLP | ModeloEntero | Record<string, unknown>
 }
 
 interface DecisionAprobacionRequest {
@@ -594,6 +822,20 @@ const API_BASE = 'http://localhost:8080/api/v1'
 // Resolver Simplex
 async function resolverSimplex(modelo: ModeloLP): Promise<SolveResult> {
   const res = await fetch(`${API_BASE}/lp/simplex`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(modelo),
+  })
+  if (!res.ok) {
+    const err: ApiError = await res.json()
+    throw new Error(err.error)
+  }
+  return res.json()
+}
+
+// Resolver PL Entera — Branch & Bound
+async function resolverBranchAndBound(modelo: ModeloEntero): Promise<SolveResultEntera> {
+  const res = await fetch(`${API_BASE}/entera/branch-and-bound`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(modelo),

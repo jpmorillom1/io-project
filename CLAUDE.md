@@ -21,7 +21,7 @@ un panel de configuración, y el sistema lo resuelve mostrando el **procedimient
 | Programación Lineal (LP) | **Simplex, Gran M, Dos Fases, Gráfico IMPLEMENTADOS** | Simplex (≤); Gran M, Dos Fases (≤/≥/=); Gráfico (2 variables); análisis post-óptimo incluido. Dual — pendiente |
 | Transporte | **Esquina Noroeste, Costo Mínimo, Vogel, MODI IMPLEMENTADOS** | Soluciones iniciales (NW/CostoMin/Vogel) + MODI (óptimo, compara las 3 iniciales); balanceo automático. Húngaro (asignación) — pendiente (la asignación se resuelve en Redes vía MCF) |
 | Redes | **Dijkstra, Kruskal, Edmonds-Karp, MCF, Asignación IMPLEMENTADOS (backend)** | Dijkstra (ruta más corta), Kruskal+Union-Find (MST), Edmonds-Karp (flujo máx), Flujo de Costo Mínimo (SSP/Bellman-Ford) y Asignación (reducción a MCF, sin Húngaro). Frontend pendiente — ver `docs/GUIA_REDES_FRONTEND.md` |
-| PL Entera | TODO estructurado | Branch & Bound sobre Simplex; Gomory (opcional) |
+| PL Entera | **Branch & Bound IMPLEMENTADO (backend)** | Branch & Bound con relajación LP resuelta por Gran M; variables enteras y binarias (cota implícita x≤1); poda por infactibilidad y por cota. Gomory — pendiente. Frontend pendiente |
 | Programación Dinámica | TODO estructurado | Tipos parametrizables (asignación/mochila/ruta por etapas) |
 | Inventarios | TODO estructurado | EOQ básico, con faltantes, con descuentos, POQ, punto de reorden |
 
@@ -156,6 +156,24 @@ válidos. Las excepciones se reservan para entradas malformadas.
 - `asignacion/AsignacionSolver` — arma la red bipartita unitaria (S→agente→tarea→T),
   balancea con "Ficticio" si n≠m y delega en el core de MCF (NO Húngaro)
 
+### domain/entera/
+- `ModeloEntero` (record, `implements ModeloResoluble`) — `relajacion` (un `ModeloLP` reutilizado:
+  variables/objetivo/restricciones) + `tiposVariable` (lista alineada por índice)
+- `TipoVariable` (enum): ENTERA, BINARIA, CONTINUA
+- `SolucionEntera` — `valores`, `valorOptimo`, `valorRelajacion` (óptimo LP de la raíz → brecha
+  de integralidad), `nodosExplorados`
+- `branchandbound/BranchAndBoundSolver` — B&B (DFS con pila, incumbente, poda por infactibilidad
+  y por cota). Resuelve cada relajación con **`GranMSolver`** (NO DosFases: DosFases da resultados
+  incorrectos con ciertas GEQ — ver nota abajo). Añade `x≤1` implícito a cada BINARIA; ramifica en
+  la variable más fraccionaria (`x≤⌊v⌋` LEQ / `x≥⌈v⌉` GEQ). Tope `MAX_NODOS=5000`. Cada nodo emite
+  un `SolveStep` con `datos` (nodoId, padreId, rama, estadoRelajacion, zRelajacion, accion:
+  RAMIFICA/PODA_INFACTIBLE/PODA_COTA/INCUMBENTE). Infactible/no acotado son `SolveStatus`, no excepciones
+
+> ⚠ **Bug preexistente detectado en `DosFasesSolver`**: para algunas restricciones GEQ devuelve
+> una solución que las VIOLA (ej. MAX 5x1+4x2 s.a 6x1+4x2≤24, x1≥4 → devuelve (0,6) Z=24 en vez de
+> (4,0) Z=20). Afecta al endpoint `/api/v1/lp/dos-fases` y a la tool `resolverDosFases`. B&B lo
+> esquiva usando `GranMSolver` (correcto en esos casos). Pendiente de investigar/corregir aparte.
+
 ### application/lp/
 - `SimplexUseCase` / `SimplexService`
 - `GranMUseCase` / `GranMService`
@@ -168,6 +186,9 @@ válidos. Las excepciones se reservan para entradas malformadas.
 ### application/redes/
 - `RedUseCase` / `RedService` — fachada única: despacha al solver según `modelo.metodo()`
   (sin método por defecto: `metodo` null → IllegalArgumentException)
+
+### application/entera/
+- `EnteraUseCase` / `EnteraService` — delega en `BranchAndBoundSolver`
 
 ### infrastructure/lp/
 - `SimplexController` — `POST /api/v1/lp/simplex`
@@ -183,10 +204,13 @@ válidos. Las excepciones se reservan para entradas malformadas.
 - `RedController` — `POST /api/v1/redes/{dijkstra,kruskal,edmonds-karp,flujo-costo-minimo,asignacion}`
   (cada endpoint fuerza su método; bind directo de `ModeloRed`)
 
+### infrastructure/entera/
+- `EnteraController` — `POST /api/v1/entera/branch-and-bound` (bind directo de `ModeloEntero`)
+
 ### infrastructure/ai/
 - `TutorAiService` — interfaz conversacional, memoria en RAM por sesión (30 mensajes)
 - `ModeloAiService` — interfaz con structured output: `extraerModelo()` y `validarModelo()`
-- `AiConfig` — beans manuales via `AiServices.builder()`; registra las 7 tools;
+- `AiConfig` — beans manuales via `AiServices.builder()`; registra las 8 tools;
   envuelve el `ChatModel` en `RetryingChatModel` antes de pasarlo a los services
 - `RetryingChatModel` — decorador del `ChatModel`: reintenta hasta 3 veces cuando Groq
   devuelve 400 `tool_use_failed` (el LLM generó la tool call con sintaxis malformada);
@@ -205,6 +229,10 @@ válidos. Las excepciones se reservan para entradas malformadas.
 - `tools/RedTool` — dos `@Tool`: `resolverRed(...)` (grafo: DIJKSTRA/KRUSKAL/EDMONDS_KARP/MCF,
   aristas como `List<AristaInput>`) y `resolverAsignacion(...)` (matriz como `List<FilaCostos>`) —
   ambas **solicitan aprobación HITL** con `MetodoResolucion.REDES`
+- `tools/EnteraTool` — `@Tool resolverEntera(...)` — PL Entera (Branch & Bound); restricciones como
+  `List<RestriccionInput>`, integralidad como dos `List<String>` (`variablesEnteras`, `variablesBinarias`,
+  ambas `required=false` — omitir si vacías) para evitar genéricos anidados — **solicita aprobación HITL**
+  con `MetodoResolucion.BRANCH_AND_BOUND`
 - `tools/SugerirModeloTool` — `@Tool registrarModeloSugerido(...)`
 - `tools/ValidarModeloTool` — `@Tool registrarValidacion(...)`
 - `tools/SolicitudAprobacionHelper` — paso común: crea la solicitud HITL y avisa al LLM
@@ -212,8 +240,8 @@ válidos. Las excepciones se reservan para entradas malformadas.
 - `AiChatController` — endpoints AI; `/chat` inicializa el store, llama al tutor
   y devuelve `ChatResponse`; `/chat/aprobacion` recibe la decisión humana, reanuda el
   workflow y reanuda al tutor con el desenlace en un mensaje `[SISTEMA]`
-- `dto/` — ChatRequest, ChatResponse (respuesta + 7 campos nullables: modeloSugerido, validacion,
-           resultado, resultadoGrafico, resultadoTransporte, resultadoRed, solicitudAprobacion), SolicitudAprobacion
+- `dto/` — ChatRequest, ChatResponse (respuesta + 8 campos nullables: modeloSugerido, validacion,
+           resultado, resultadoGrafico, resultadoTransporte, resultadoRed, resultadoEntero, solicitudAprobacion), SolicitudAprobacion
            (modelo tipado `ModeloResoluble`), DecisionAprobacionRequest, SugerirModeloRequest,
            ModeloSugeridoResponse, ValidarModeloRequest, ValidacionResponse
 
@@ -229,11 +257,12 @@ estructural, no de prompt. Ver §7 para el flujo completo.
   `decidir()` (completa el PendingResponse "en caliente", espera el desenlace y evacúa
   el scope), `limpiarExpiradas()` (@Scheduled: descarta solicitudes sin decisión >15 min)
 - `SolicitudAprobacionRegistry` — registro en RAM de solicitudes en vuelo
-- `ResolucionEjecutor` — único punto que invoca los use cases de resolución (LP + Transporte + Redes);
-  su record `Ejecucion` tiene 4 resultados (solo uno non-null: `resultado` tabular LP,
-  `resultadoGrafico`, `resultadoTransporte` o `resultadoRed`); genera el resumen textual que el tutor usa
-- `MetodoResolucion` (enum): SIMPLEX, GRAN_M, DOS_FASES, GRAFICO, **TRANSPORTE**, **REDES**
-  (el submétodo viaja dentro del `ModeloTransporte`/`ModeloRed`, no como valores de enum aparte)
+- `ResolucionEjecutor` — único punto que invoca los use cases de resolución (LP + Transporte + Redes + Entera);
+  su record `Ejecucion` tiene 5 resultados (solo uno non-null: `resultado` tabular LP,
+  `resultadoGrafico`, `resultadoTransporte`, `resultadoRed` o `resultadoEntero`); genera el resumen textual
+  que el tutor usa. `formatearEntero` guía la justificación de enteros y la interpretación de binarias
+- `MetodoResolucion` (enum): SIMPLEX, GRAN_M, DOS_FASES, GRAFICO, **TRANSPORTE**, **REDES**, **BRANCH_AND_BOUND**
+  (el submétodo viaja dentro del `ModeloTransporte`/`ModeloRed`; la integralidad dentro del `ModeloEntero`)
 - `DecisionAprobacion` (record)
 - Toda la cadena (`SolicitudAprobacion`, `Registry`, `AprobacionHumanaService`, `Workflow`)
   está tipada a `ModeloResoluble`, no a `ModeloLP` — así admite cualquier módulo futuro
@@ -257,11 +286,16 @@ estructural, no de prompt. Ver §7 para el flujo completo.
   inalcanzable → INFACTIBLE), `KruskalSolverTest` (MST conocido, arista rechazada por ciclo,
   desconexo → INFACTIBLE), `EdmondsKarpSolverTest` (flujo máx 5), `FlujoCostoMinimoSolverTest`
   (re-ruteo por arco inverso, costo 7), `AsignacionSolverTest` (óptimo 9, balanceo n≠m)
+- `domain/entera/BranchAndBoundSolverTest` — óptimo entero conocido (clásico 5x1+4x2 → 20 en (4,0),
+  relajación 21), selección binaria (mochila → 9), relajación ya entera (sin ramificar, 1 nodo),
+  infactible-entero (INFACTIBLE), y validación de `tiposVariable` desalineados
 - `infrastructure/transporte/TransporteControllerTest` — controller + serialización Jackson
 - `infrastructure/redes/RedControllerTest` — controller + serialización Jackson (dijkstra/kruskal/asignacion)
+- `infrastructure/entera/EnteraControllerTest` — controller + serialización Jackson (Z*, valorRelajacion, steps)
 - `infrastructure/ai/tools/TransporteToolSchemaTest` — el esquema JSON del `@Tool` se genera sin crash
 - `infrastructure/ai/tools/RedToolSchemaTest` — esquemas de `resolverRed` y `resolverAsignacion` sin crash
-- `ResolucionAprobadaWorkflowTest` — HITL end-to-end (incluye casos TRANSPORTE y REDES devolviendo resultado)
+- `infrastructure/ai/tools/EnteraToolSchemaTest` — esquema de `resolverEntera` sin crash
+- `ResolucionAprobadaWorkflowTest` — HITL end-to-end (incluye casos TRANSPORTE, REDES y BRANCH_AND_BOUND devolviendo resultado)
 
 ---
 
@@ -282,6 +316,7 @@ estructural, no de prompt. Ver §7 para el flujo completo.
 | POST | `/api/v1/redes/edmonds-karp` | Flujo máximo fuente→sumidero |
 | POST | `/api/v1/redes/flujo-costo-minimo` | Flujo máximo de costo mínimo (successive shortest paths) |
 | POST | `/api/v1/redes/asignacion` | Asignación óptima agentes→tareas (reducción a MCF) |
+| POST | `/api/v1/entera/branch-and-bound` | PL Entera por Branch & Bound (variables enteras/binarias); árbol de nodos + brecha de integralidad |
 | POST | `/api/v1/ai/chat` | Chat socrático con memoria de sesión |
 | POST | `/api/v1/ai/chat/aprobacion` | HITL: decisión humana (aprobar/rechazar) sobre la solicitud de resolución pendiente |
 | POST | `/api/v1/ai/sugerir-modelo` | Extrae `ModeloLP` desde lenguaje natural |
@@ -534,3 +569,5 @@ el método correcto por el tipo de restricciones del modelo.
 - `docs/GUIA_REDES.md` — (COMPLETADO — backend) guía con la que se implementó el módulo Redes
 - `docs/GUIA_REDES_FRONTEND.md` — **guía para la próxima sesión**: cómo construir la UI de Redes
   calcada del frontend de Transporte (NetworkGraph + adaptador + touch-points del chat adaptativo)
+- `docs/SONARQUBE_CI.md` — pipeline SonarQube + JaCoCo (workflow, cobertura, complejidad) y
+  guía para conectar proyectos futuros al servidor SonarQube (secrets, recetas por stack)
