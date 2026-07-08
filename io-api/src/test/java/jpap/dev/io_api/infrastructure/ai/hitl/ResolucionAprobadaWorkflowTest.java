@@ -1,6 +1,7 @@
 package jpap.dev.io_api.infrastructure.ai.hitl;
 
 import jpap.dev.io_api.application.entera.EnteraService;
+import jpap.dev.io_api.application.inventario.InventarioService;
 import jpap.dev.io_api.application.lp.DosFasesService;
 import jpap.dev.io_api.application.lp.GraficoService;
 import jpap.dev.io_api.application.lp.GranMService;
@@ -10,6 +11,8 @@ import jpap.dev.io_api.application.transporte.TransporteService;
 import jpap.dev.io_api.domain.common.SolveStatus;
 import jpap.dev.io_api.domain.entera.ModeloEntero;
 import jpap.dev.io_api.domain.entera.TipoVariable;
+import jpap.dev.io_api.domain.inventario.MetodoInventario;
+import jpap.dev.io_api.domain.inventario.ModeloInventario;
 import jpap.dev.io_api.domain.lp.FuncionObjetivo;
 import jpap.dev.io_api.domain.lp.ModeloLP;
 import jpap.dev.io_api.domain.lp.Restriccion;
@@ -56,7 +59,7 @@ class ResolucionAprobadaWorkflowTest {
         ResolucionEjecutor ejecutor = new ResolucionEjecutor(
                 new SimplexService(), new GranMService(), new DosFasesService(),
                 new GraficoService(), new TransporteService(), new RedService(),
-                new EnteraService());
+                new EnteraService(), new InventarioService());
         ResolucionAprobadaWorkflow workflow = new HitlConfig().resolucionAprobadaWorkflow(ejecutor, registry);
         executor = Executors.newVirtualThreadPerTaskExecutor();
         service = new AprobacionHumanaService(workflow, registry, executor);
@@ -205,6 +208,27 @@ class ResolucionAprobadaWorkflowTest {
         assertEquals(SolveStatus.OPTIMO, desenlace.ejecucion().resultadoEntero().status());
         assertEquals(20.0, desenlace.ejecucion().resultadoEntero().solution().valorOptimo(), 1e-6);
         assertTrue(desenlace.resumenParaTutor().contains("PL Entera"));
+    }
+
+    /** EOQ básico D=1000, K=50, H=4 → Q*≈158.11, costo total≈632.46. */
+    @Test
+    void aprobarConMetodoInventarioDevuelveResultadoInventario() {
+        ModeloInventario modelo = new ModeloInventario(
+                MetodoInventario.EOQ_BASICO, 1000.0, 50.0, 4.0,
+                null, null, null, null, null, null);
+
+        SolicitudAprobacion solicitud = service.solicitar("sesion-i", modelo, MetodoResolucion.INVENTARIO);
+        var desenlace = service.decidir(solicitud.solicitudId(), true, null);
+
+        assertNull(desenlace.ejecucion().resultado(), "inventario no produce resultado tabular LP");
+        assertNull(desenlace.ejecucion().resultadoGrafico());
+        assertNull(desenlace.ejecucion().resultadoTransporte());
+        assertNull(desenlace.ejecucion().resultadoRed());
+        assertNull(desenlace.ejecucion().resultadoEntero());
+        assertNotNull(desenlace.ejecucion().resultadoInventario());
+        assertEquals(SolveStatus.OPTIMO, desenlace.ejecucion().resultadoInventario().status());
+        assertEquals(158.113883, desenlace.ejecucion().resultadoInventario().solution().cantidadOptima(), 1e-4);
+        assertTrue(desenlace.resumenParaTutor().contains("Inventario"));
     }
 
     @Test

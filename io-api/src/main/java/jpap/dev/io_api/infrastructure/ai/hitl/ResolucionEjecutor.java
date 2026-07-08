@@ -1,6 +1,7 @@
 package jpap.dev.io_api.infrastructure.ai.hitl;
 
 import jpap.dev.io_api.application.entera.EnteraUseCase;
+import jpap.dev.io_api.application.inventario.InventarioUseCase;
 import jpap.dev.io_api.application.lp.DosFasesUseCase;
 import jpap.dev.io_api.application.lp.GraficoUseCase;
 import jpap.dev.io_api.application.lp.GranMUseCase;
@@ -14,6 +15,9 @@ import jpap.dev.io_api.domain.common.SolveStep;
 import jpap.dev.io_api.domain.entera.ModeloEntero;
 import jpap.dev.io_api.domain.entera.SolucionEntera;
 import jpap.dev.io_api.domain.entera.TipoVariable;
+import jpap.dev.io_api.domain.inventario.ComparativaTramo;
+import jpap.dev.io_api.domain.inventario.ModeloInventario;
+import jpap.dev.io_api.domain.inventario.SolucionInventario;
 import jpap.dev.io_api.domain.lp.ModeloLP;
 import jpap.dev.io_api.domain.lp.SolucionLP;
 import jpap.dev.io_api.domain.lp.grafico.PuntoVertice;
@@ -49,6 +53,7 @@ public class ResolucionEjecutor {
     private final TransporteUseCase transporteUseCase;
     private final RedUseCase redUseCase;
     private final EnteraUseCase enteraUseCase;
+    private final InventarioUseCase inventarioUseCase;
 
     public ResolucionEjecutor(SimplexUseCase simplexUseCase,
                               GranMUseCase granMUseCase,
@@ -56,7 +61,8 @@ public class ResolucionEjecutor {
                               GraficoUseCase graficoUseCase,
                               TransporteUseCase transporteUseCase,
                               RedUseCase redUseCase,
-                              EnteraUseCase enteraUseCase) {
+                              EnteraUseCase enteraUseCase,
+                              InventarioUseCase inventarioUseCase) {
         this.simplexUseCase = simplexUseCase;
         this.granMUseCase = granMUseCase;
         this.dosFasesUseCase = dosFasesUseCase;
@@ -64,13 +70,14 @@ public class ResolucionEjecutor {
         this.transporteUseCase = transporteUseCase;
         this.redUseCase = redUseCase;
         this.enteraUseCase = enteraUseCase;
+        this.inventarioUseCase = inventarioUseCase;
     }
 
     /**
-     * Resultado de una ejecución aprobada. Solo uno de los cinco resultados es non-null:
+     * Resultado de una ejecución aprobada. Solo uno de los seis resultados es non-null:
      * resultado (tabular LP: Simplex/GranM/DosFases), resultadoGrafico (método gráfico),
-     * resultadoTransporte (métodos de transporte), resultadoRed (problemas de redes) o
-     * resultadoEntero (PL Entera por Branch &amp; Bound).
+     * resultadoTransporte (métodos de transporte), resultadoRed (problemas de redes),
+     * resultadoEntero (PL Entera por Branch &amp; Bound) o resultadoInventario (modelos de inventario).
      */
     public record Ejecucion(
             SolveResult<SolucionLP> resultado,
@@ -78,6 +85,7 @@ public class ResolucionEjecutor {
             SolveResult<SolucionTransporte> resultadoTransporte,
             SolveResult<SolucionRed> resultadoRed,
             SolveResult<SolucionEntera> resultadoEntero,
+            SolveResult<SolucionInventario> resultadoInventario,
             String resumenParaTutor
     ) {}
 
@@ -87,26 +95,32 @@ public class ResolucionEjecutor {
         if (metodo == MetodoResolucion.TRANSPORTE) {
             ModeloTransporte mt = (ModeloTransporte) modelo;
             SolveResult<SolucionTransporte> resultado = transporteUseCase.resolver(mt);
-            return new Ejecucion(null, null, resultado, null, null, formatearTransporte(resultado, mt));
+            return new Ejecucion(null, null, resultado, null, null, null, formatearTransporte(resultado, mt));
         }
 
         if (metodo == MetodoResolucion.REDES) {
             ModeloRed mr = (ModeloRed) modelo;
             SolveResult<SolucionRed> resultado = redUseCase.resolver(mr);
-            return new Ejecucion(null, null, null, resultado, null, formatearRed(resultado, mr));
+            return new Ejecucion(null, null, null, resultado, null, null, formatearRed(resultado, mr));
         }
 
         if (metodo == MetodoResolucion.BRANCH_AND_BOUND) {
             ModeloEntero me = (ModeloEntero) modelo;
             SolveResult<SolucionEntera> resultado = enteraUseCase.resolver(me);
-            return new Ejecucion(null, null, null, null, resultado, formatearEntero(resultado, me));
+            return new Ejecucion(null, null, null, null, resultado, null, formatearEntero(resultado, me));
+        }
+
+        if (metodo == MetodoResolucion.INVENTARIO) {
+            ModeloInventario mi = (ModeloInventario) modelo;
+            SolveResult<SolucionInventario> resultado = inventarioUseCase.resolver(mi);
+            return new Ejecucion(null, null, null, null, null, resultado, formatearInventario(resultado, mi));
         }
 
         ModeloLP mlp = (ModeloLP) modelo;
 
         if (metodo == MetodoResolucion.GRAFICO) {
             SolveResult<SolucionGrafica> resultado = graficoUseCase.resolver(mlp);
-            return new Ejecucion(null, resultado, null, null, null, formatearGrafico(resultado));
+            return new Ejecucion(null, resultado, null, null, null, null, formatearGrafico(resultado));
         }
 
         SolveResult<SolucionLP> resultado = switch (metodo) {
@@ -117,8 +131,9 @@ public class ResolucionEjecutor {
             case TRANSPORTE -> throw new IllegalStateException("cubierto arriba");
             case REDES -> throw new IllegalStateException("cubierto arriba");
             case BRANCH_AND_BOUND -> throw new IllegalStateException("cubierto arriba");
+            case INVENTARIO -> throw new IllegalStateException("cubierto arriba");
         };
-        return new Ejecucion(resultado, null, null, null, null, formatearTabular(resultado, metodo));
+        return new Ejecucion(resultado, null, null, null, null, null, formatearTabular(resultado, metodo));
     }
 
     // ─── formato para el tutor (movido desde las @Tool de resolución) ────────────
@@ -132,6 +147,7 @@ public class ResolucionEjecutor {
             case TRANSPORTE -> "Transporte";   // no se alcanza: transporte se formatea aparte
             case REDES -> "Redes";             // no se alcanza: redes se formatea aparte
             case BRANCH_AND_BOUND -> "Branch & Bound"; // no se alcanza: PL Entera se formatea aparte
+            case INVENTARIO -> "Inventario";   // no se alcanza: inventario se formatea aparte
         };
         StringBuilder sb = new StringBuilder();
         sb.append("=== RESULTADO DEL SOLVER (").append(nombre).append(") ===\n");
@@ -443,6 +459,107 @@ public class ResolucionEjecutor {
         } else {
             sb.append("  3. INTERPRETE la solución entera en el contexto real del problema (cantidades indivisibles).\n");
         }
+
+        return sb.toString();
+    }
+
+    private String formatearInventario(SolveResult<SolucionInventario> r, ModeloInventario modelo) {
+        String nombre = switch (modelo.metodo()) {
+            case EOQ_BASICO -> "EOQ básico";
+            case EOQ_DESCUENTOS -> "EOQ con descuentos por cantidad";
+            case EOQ_FALTANTES -> "EOQ con faltantes permitidos";
+            case PRODUCCION_ECONOMICA -> "Producción económica (POQ/EPQ)";
+            case PUNTO_REORDEN -> "Punto de reorden";
+        };
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("=== RESULTADO DEL SOLVER (Inventario — ").append(nombre).append(") ===\n");
+        sb.append("Estado: ").append(r.status().name()).append("\n");
+
+        if (r.solution() == null) {
+            sb.append("No se obtuvo solución.\n");
+            return sb.toString();
+        }
+
+        SolucionInventario sol = r.solution();
+        sb.append("Cantidad económica Q* = ").append(sol.cantidadOptima()).append(" unidades\n");
+        if (sol.numeroPedidos() != null) {
+            sb.append("Número de pedidos al año N = ").append(sol.numeroPedidos());
+            if (sol.tiempoCicloDias() != null) {
+                sb.append("  (un ciclo cada ").append(sol.tiempoCicloDias()).append(" días hábiles)");
+            }
+            sb.append("\n");
+        }
+        sb.append("Costo de ordenar/preparar anual = ").append(sol.costoOrdenarAnual()).append("\n");
+        sb.append("Costo de mantener anual = ").append(sol.costoMantenerAnual()).append("\n");
+
+        switch (modelo.metodo()) {
+            case PRODUCCION_ECONOMICA -> {
+                if (sol.nivelMaximoInventario() != null)
+                    sb.append("Inventario máximo Imax = ").append(sol.nivelMaximoInventario()).append(" unidades\n");
+            }
+            case EOQ_FALTANTES -> {
+                if (sol.nivelMaximoInventario() != null)
+                    sb.append("Inventario máximo S = ").append(sol.nivelMaximoInventario()).append(" unidades\n");
+                if (sol.faltanteMaximo() != null)
+                    sb.append("Faltante máximo planeado = ").append(sol.faltanteMaximo()).append(" unidades\n");
+                if (sol.costoFaltanteAnual() != null)
+                    sb.append("Costo por faltantes anual = ").append(sol.costoFaltanteAnual()).append("\n");
+            }
+            case PUNTO_REORDEN -> {
+                if (sol.demandaDiaria() != null)
+                    sb.append("Demanda diaria d = ").append(sol.demandaDiaria()).append(" unidades/día\n");
+                if (sol.puntoReorden() != null)
+                    sb.append("Punto de reorden R = ").append(sol.puntoReorden())
+                      .append(" unidades (dispara un nuevo pedido)\n");
+            }
+            case EOQ_DESCUENTOS -> {
+                if (sol.precioUnitarioOptimo() != null)
+                    sb.append("Precio unitario elegido = ").append(sol.precioUnitarioOptimo()).append("\n");
+                if (sol.costoCompraAnual() != null)
+                    sb.append("Costo de compra anual (D·C) = ").append(sol.costoCompraAnual()).append("\n");
+                if (sol.comparativa() != null) {
+                    sb.append("Comparativa por tramo (precio → cantidad → costo total):\n");
+                    for (ComparativaTramo c : sol.comparativa()) {
+                        sb.append("  precio ").append(c.precioUnitario())
+                          .append(" → Q=").append(c.cantidad())
+                          .append(" → CT=").append(c.costoTotal())
+                          .append(c.factible() ? "" : " (no factible)").append("\n");
+                    }
+                }
+            }
+            case EOQ_BASICO -> { /* sin campos extra */ }
+        }
+
+        boolean incluyeCompra = modelo.metodo() == jpap.dev.io_api.domain.inventario.MetodoInventario.EOQ_DESCUENTOS;
+        sb.append(incluyeCompra ? "COSTO TOTAL anual (compra + ordenar + mantener) = "
+                                : "COSTO TOTAL anual (ordenar + mantener) = ")
+          .append(sol.costoTotalAnual()).append("\n");
+
+        if (sol.interpretacionPolitica() != null) {
+            sb.append("\nPolítica recomendada: ").append(sol.interpretacionPolitica()).append("\n");
+        }
+
+        sb.append("\n--- PASOS DEL CÁLCULO ---\n");
+        for (SolveStep step : r.steps()) {
+            sb.append("Paso ").append(step.numero()).append(": ").append(step.titulo()).append("\n");
+        }
+
+        sb.append("\nLa interfaz ya muestra el desarrollo paso a paso. Guía al estudiante para que:\n");
+        sb.append("  1. INTERPRETE la política en su contexto real (cuánto pedir y cada cuánto), no solo el número Q*.\n");
+        switch (modelo.metodo()) {
+            case EOQ_BASICO -> sb.append("  2. Note que en el óptimo el costo de ordenar iguala al de mantener: "
+                    + "es el punto donde el ahorro por pedir menos veces empata con el costo de guardar más stock.\n");
+            case PRODUCCION_ECONOMICA -> sb.append("  2. Entienda por qué Imax < Q*: al producir gradualmente, "
+                    + "la demanda consume parte del lote mientras se fabrica, así que nunca se acumula todo junto.\n");
+            case EOQ_FALTANTES -> sb.append("  2. Evalúe el trade-off: permitir faltantes reduce el costo de mantener "
+                    + "pero suma el de faltante; solo conviene si b es pequeño frente a H.\n");
+            case PUNTO_REORDEN -> sb.append("  2. Distinga CUÁNTO pedir (Q*) de CUÁNDO pedir (R): R avisa cuándo lanzar "
+                    + "el pedido para que llegue justo al agotarse el stock, dado el tiempo de entrega.\n");
+            case EOQ_DESCUENTOS -> sb.append("  2. Compare el costo TOTAL, no solo el precio: un descuento mayor puede "
+                    + "obligar a pedir tanto que el costo de mantener anule el ahorro en la compra.\n");
+        }
+        sb.append("  3. Verifique manualmente algún componente del costo para validar el resultado.");
 
         return sb.toString();
     }

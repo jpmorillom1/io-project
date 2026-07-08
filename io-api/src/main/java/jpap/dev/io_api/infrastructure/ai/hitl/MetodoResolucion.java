@@ -11,6 +11,9 @@ package jpap.dev.io_api.infrastructure.ai.hitl;
  * Kruskal, Edmonds-Karp, Flujo de Costo Mínimo o Asignación) viaja dentro del ModeloRed.
  * BRANCH_AND_BOUND resuelve Programación Lineal Entera (variables enteras/binarias); el
  * detalle de integralidad viaja dentro del ModeloEntero.
+ * INVENTARIO agrupa los cinco modelos deterministas de inventario (EOQ básico, con descuentos,
+ * con faltantes, producción económica y punto de reorden); el submodelo concreto viaja dentro
+ * del ModeloInventario.
  */
 public enum MetodoResolucion {
     SIMPLEX,
@@ -19,5 +22,6 @@ public enum MetodoResolucion {
     GRAFICO,
     TRANSPORTE,
     REDES,
-    BRANCH_AND_BOUND
+    BRANCH_AND_BOUND,
+    INVENTARIO
 }

@@ -43,7 +43,7 @@ class SolicitudAprobacionHelperTest {
         ResolucionEjecutor ejecutor = new ResolucionEjecutor(
                 new SimplexService(), new GranMService(), new DosFasesService(),
                 new GraficoService(), new TransporteService(), new RedService(),
-                new EnteraService());
+                new EnteraService(), new jpap.dev.io_api.application.inventario.InventarioService());
         ResolucionAprobadaWorkflow workflow = new HitlConfig().resolucionAprobadaWorkflow(ejecutor, registry);
         executor = Executors.newVirtualThreadPerTaskExecutor();
         AprobacionHumanaService service = new AprobacionHumanaService(workflow, registry, executor);

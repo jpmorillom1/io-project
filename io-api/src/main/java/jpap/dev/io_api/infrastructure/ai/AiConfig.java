@@ -9,6 +9,7 @@ import jpap.dev.io_api.infrastructure.ai.tools.DosFasesTool;
 import jpap.dev.io_api.infrastructure.ai.tools.EnteraTool;
 import jpap.dev.io_api.infrastructure.ai.tools.GraficoTool;
 import jpap.dev.io_api.infrastructure.ai.tools.GranMTool;
+import jpap.dev.io_api.infrastructure.ai.tools.InventarioTool;
 import jpap.dev.io_api.infrastructure.ai.tools.RedTool;
 import jpap.dev.io_api.infrastructure.ai.tools.SimplexTool;
 import jpap.dev.io_api.infrastructure.ai.tools.SugerirModeloTool;
@@ -48,13 +49,14 @@ public class AiConfig {
                                          TransporteTool transporteTool,
                                          RedTool redTool,
                                          EnteraTool enteraTool,
+                                         InventarioTool inventarioTool,
                                          ContentRetriever contentRetriever)
             throws IOException {
         String systemPrompt = cargarPrompt("classpath:prompts/tutor_system_prompt.txt");
         return AiServices.builder(TutorAiService.class)
                 .chatModel(new RetryingChatModel(chatModel))
                 .chatMemoryProvider(memId -> MessageWindowChatMemory.withMaxMessages(30))
-                .tools(simplexTool, sugerirTool, validarTool, granMTool, dosFasesTool, graficoTool, transporteTool, redTool, enteraTool)
+                .tools(simplexTool, sugerirTool, validarTool, granMTool, dosFasesTool, graficoTool, transporteTool, redTool, enteraTool, inventarioTool)
                 // Red de seguridad ante bucles de tool calls del LLM (llama repite la misma
                 // llamada a temperatura 0): al exceder el tope LangChain4j lanza y el
                 // controlador degrada con el mensaje amable. El caso normal usa 1-3 tools.

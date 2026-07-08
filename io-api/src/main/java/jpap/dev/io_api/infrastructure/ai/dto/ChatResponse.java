@@ -2,6 +2,7 @@ package jpap.dev.io_api.infrastructure.ai.dto;
 
 import jpap.dev.io_api.domain.common.SolveResult;
 import jpap.dev.io_api.domain.entera.SolucionEntera;
+import jpap.dev.io_api.domain.inventario.SolucionInventario;
 import jpap.dev.io_api.domain.lp.ModeloLP;
 import jpap.dev.io_api.domain.lp.SolucionLP;
 import jpap.dev.io_api.domain.lp.grafico.SolucionGrafica;
@@ -20,6 +21,7 @@ import jpap.dev.io_api.domain.transporte.SolucionTransporte;
  * - resultadoTransporte:  non-null cuando un método de transporte se ejecutó tras la aprobación humana
  * - resultadoRed:         non-null cuando un problema de redes se ejecutó tras la aprobación humana
  * - resultadoEntero:      non-null cuando un modelo de PL Entera (Branch & Bound) se ejecutó tras la aprobación humana
+ * - resultadoInventario:  non-null cuando un modelo de inventario se ejecutó tras la aprobación humana
  * - solicitudAprobacion:  non-null cuando el tutor quiere resolver y espera la aprobación del
  *                         estudiante — la UI debe mostrar el modelo con botones Aprobar/Rechazar
  */
@@ -33,5 +35,6 @@ public record ChatResponse(
         SolveResult<SolucionTransporte> resultadoTransporte,
         SolveResult<SolucionRed> resultadoRed,
         SolveResult<SolucionEntera> resultadoEntero,
+        SolveResult<SolucionInventario> resultadoInventario,
         SolicitudAprobacion solicitudAprobacion
 ) {}

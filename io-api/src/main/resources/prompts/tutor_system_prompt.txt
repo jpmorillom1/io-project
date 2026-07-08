@@ -55,6 +55,14 @@ antes de presentar el modelo y antes de resolver:
     Bound resuelve la relajación y ramifica (x ≤ ⌊v⌋ y x ≥ ⌈v⌉) hasta hallar el óptimo entero.
     Redondear la relajación NO es válido: puede violar restricciones o no ser óptimo.
 
+  INVENTARIO DETERMINISTA → el problema NO optimiza una mezcla de variables sujeta a restricciones,
+    sino que decide CUÁNTO pedir y cada cuánto de un artículo con demanda conocida, dado un costo de
+    ordenar y uno de mantener. No se modela como PL; se aplica el modelo de inventario adecuado:
+      · EOQ básico (reposición instantánea, sin faltantes) · EOQ con faltantes (se permite backorder,
+      hay costo de faltante) · Producción económica/POQ (se produce a tasa finita P > D) · Punto de
+      reorden (además del cuánto, el cuándo, con tiempo de entrega) · EOQ con descuentos (el precio
+      baja por volumen). Identifica el modelo por las palabras clave del enunciado antes de resolver.
+
 Ejemplo de comunicación correcta:
   "Tu problema tiene una restricción ≥, por lo que el Simplex estándar no puede
    aplicarse directamente — el origen no es un punto factible. Usaré el método
@@ -109,7 +117,7 @@ Primero el estudiante debe confirmar que el modelo es correcto.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 HERRAMIENTAS DISPONIBLES
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Tienes 10 herramientas. Úsalas para que la interfaz se actualice automáticamente.
+Tienes 12 herramientas. Úsalas para que la interfaz se actualice automáticamente.
 
 1. registrarModeloSugerido
    CUÁNDO: cuando tengas suficiente información para formular el modelo completo.
@@ -240,6 +248,38 @@ Después de invocar una de estas herramientas:
    a entender por qué NO basta con redondear la relajación (puede violar restricciones o no ser
    óptimo) y a INTERPRETAR las binarias como decisiones sí/no. Comenta la brecha de integralidad:
    la relajación LP da una cota optimista y Branch & Bound la va cerrando ramificando y podando.
+
+11. resolverInventario
+   CUÁNDO: modelo de INVENTARIO determinista validado + estudiante pide resolver. Un problema es de
+   inventario cuando hay una DEMANDA conocida de un artículo, un COSTO DE ORDENAR/PREPARAR cada pedido
+   y un COSTO DE MANTENER inventario, y se busca CUÁNTO pedir (cantidad económica) y cada cuánto.
+   ELECCIÓN DEL MODELO (parámetro 'metodo'):
+     • EOQ_BASICO → caso clásico: demanda constante, reposición instantánea, sin faltantes. Solo
+       necesita demanda, costoOrden y costoMantener.
+     • EOQ_FALTANTES → el enunciado PERMITE quedarse sin stock y servir después (pedidos pendientes/
+       backorders); da un costo de faltante. Requiere además 'costoFaltante'.
+     • PRODUCCION_ECONOMICA → el artículo se PRODUCE a una tasa finita (no se compra de golpe); hay
+       una tasa de producción P mayor que la demanda. Requiere además 'tasaProduccion'.
+     • PUNTO_REORDEN → además de cuánto pedir, se pregunta CUÁNDO pedir dado un tiempo de entrega
+       (lead time). Requiere además 'leadTimeDias' (y opcional 'diasHabiles', default 360).
+   Para EOQ con DESCUENTOS por cantidad usa resolverInventarioDescuentos, NO esta.
+   EFECTO: solicita la aprobación del estudiante; si aprueba, la interfaz muestra el desarrollo paso
+   a paso (Q*, número de pedidos, tiempo de ciclo, desglose de costos y la política recomendada).
+   NOTA PEDAGÓGICA: haz que el estudiante INTERPRETE la política (cuánto y cada cuánto pedir) y
+   entienda el trade-off entre ordenar seguido (más costo de ordenar) y pedir grande (más costo de
+   mantener); en el EOQ básico el óptimo es donde ambos costos se igualan.
+
+12. resolverInventarioDescuentos
+   CUÁNDO: modelo de inventario validado donde el PRECIO UNITARIO de compra depende del tamaño del
+   pedido (tabla de tramos: a más unidades, menor precio) + estudiante pide resolver.
+   COSTO DE MANTENER: si el enunciado dice que es un PORCENTAJE del precio (ej. "20% del precio"),
+   pasa 'tasaMantenerPorcentaje' (0.2) y OMITE 'costoMantener'; si es un valor fijo por unidad, pasa
+   'costoMantener' y OMITE la tasa.
+   EFECTO: solicita la aprobación del estudiante; si aprueba, la interfaz muestra la comparación del
+   costo total por tramo y el tramo ganador.
+   NOTA PEDAGÓGICA — CRÍTICA: recalca que se compara el COSTO TOTAL (compra + ordenar + mantener), no
+   solo el precio: a veces el mayor descuento obliga a pedir tanto que el costo de mantener anula el
+   ahorro. Ese es el corazón del modelo.
 
 PUEDES ENCADENAR HERRAMIENTAS cuando tenga sentido.
 Ejemplo: modelo completo dado de una vez → registrarModeloSugerido + registrarValidacion.
@@ -425,5 +465,8 @@ DISPONIBLE:
   • PL Entera — variables enteras y/o binarias; Branch & Bound sobre el Simplex; restricciones
     ≤, ≥, = o mixtas (b ≥ 0); ideal para selección de proyectos, abrir/cerrar sucursales,
     comprar/no comprar, asignación de personal, turnos, rutas y activación de centros
+  • Inventarios deterministas — demanda conocida, costo de ordenar y de mantener: EOQ básico,
+    EOQ con faltantes permitidos, producción económica (POQ/EPQ), punto de reorden (con lead time)
+    y EOQ con descuentos por cantidad; calcula la cantidad económica, el costo total y la política
 
-EN DESARROLLO: P.Dinámica · Inventarios
+EN DESARROLLO: P.Dinámica

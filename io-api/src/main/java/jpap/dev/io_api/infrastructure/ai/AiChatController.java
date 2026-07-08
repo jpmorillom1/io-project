@@ -99,6 +99,7 @@ public class AiChatController {
                     datos.resultadoTransporte,
                     datos.resultadoRed,
                     datos.resultadoEntero,
+                    datos.resultadoInventario,
                     datos.solicitudAprobacion
             ));
         } catch (RuntimeException e) {
@@ -107,7 +108,7 @@ public class AiChatController {
             log.error("[AI/chat] fallo del LLM tras reintentos — sesionId={}", sesionId, e);
             return ResponseEntity.ok(new ChatResponse(
                     sesionId, MENSAJE_ERROR_LLM,
-                    null, null, null, null, null, null, null, null
+                    null, null, null, null, null, null, null, null, null
             ));
         } finally {
             contextStore.limpiar();
@@ -150,6 +151,7 @@ public class AiChatController {
                     ejecucion != null ? ejecucion.resultadoTransporte() : null,
                     ejecucion != null ? ejecucion.resultadoRed() : null,
                     ejecucion != null ? ejecucion.resultadoEntero() : null,
+                    ejecucion != null ? ejecucion.resultadoInventario() : null,
                     datos.solicitudAprobacion
             ));
         } catch (RuntimeException e) {
@@ -168,6 +170,7 @@ public class AiChatController {
                     ejecucion != null ? ejecucion.resultadoTransporte() : null,
                     ejecucion != null ? ejecucion.resultadoRed() : null,
                     ejecucion != null ? ejecucion.resultadoEntero() : null,
+                    ejecucion != null ? ejecucion.resultadoInventario() : null,
                     null
             ));
         } finally {
