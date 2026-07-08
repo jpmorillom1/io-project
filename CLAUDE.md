@@ -23,7 +23,7 @@ un panel de configuración, y el sistema lo resuelve mostrando el **procedimient
 | Redes | **Dijkstra, Kruskal, Edmonds-Karp, MCF, Asignación IMPLEMENTADOS (backend)** | Dijkstra (ruta más corta), Kruskal+Union-Find (MST), Edmonds-Karp (flujo máx), Flujo de Costo Mínimo (SSP/Bellman-Ford) y Asignación (reducción a MCF, sin Húngaro). Frontend pendiente — ver `docs/GUIA_REDES_FRONTEND.md` |
 | PL Entera | **Branch & Bound IMPLEMENTADO (backend)** | Branch & Bound con relajación LP resuelta por Gran M; variables enteras y binarias (cota implícita x≤1); poda por infactibilidad y por cota. Gomory — pendiente. Frontend pendiente |
 | Programación Dinámica | TODO estructurado | Tipos parametrizables (asignación/mochila/ruta por etapas) |
-| Inventarios | TODO estructurado | EOQ básico, con faltantes, con descuentos, POQ, punto de reorden |
+| Inventarios | **EOQ básico, Descuentos, Faltantes, Producción económica (POQ), Punto de reorden IMPLEMENTADOS (backend)** | 5 modelos deterministas: EOQ Wilson; EOQ con descuentos por cantidad (all-units); EOQ con faltantes/backorders; POQ/EPQ (tasa finita P>D); Punto de reorden (R=d·L, días hábiles). Fórmulas cerradas → status siempre OPTIMO. Frontend pendiente |
 
 **"TODO estructurado"** = la carcasa existe (interfaz, contrato I/O, formulario), pero el
 algoritmo se implementa cuando el docente imparta la teoría. NO inventes la implementación
@@ -174,6 +174,24 @@ válidos. Las excepciones se reservan para entradas malformadas.
 > (4,0) Z=20). Afecta al endpoint `/api/v1/lp/dos-fases` y a la tool `resolverDosFases`. B&B lo
 > esquiva usando `GranMSolver` (correcto en esos casos). Pendiente de investigar/corregir aparte.
 
+### domain/inventario/
+- `ModeloInventario` (record, `implements ModeloResoluble`) — campos nullable por método: `metodo`
+  (`MetodoInventario`), `demanda` (D), `costoOrden` (K), `costoMantener` (H), `costoFaltante` (b),
+  `tasaProduccion` (P), `leadTimeDias` (L), `diasHabiles` (default 360), `tasaMantenerPorcentaje` (i),
+  `tramos` (`List<TramoDescuento>`); helpers `conMetodo`, `diasHabilesOrDefault`
+- `MetodoInventario` (enum): EOQ_BASICO, EOQ_DESCUENTOS, EOQ_FALTANTES, PRODUCCION_ECONOMICA, PUNTO_REORDEN
+- `SolucionInventario` — record unificado con `Builder` anidado; campos null según método: `cantidadOptima`
+  (Q*), `costoTotalAnual`, `costoOrdenarAnual`, `costoMantenerAnual`, `numeroPedidos`, `tiempoCicloDias`,
+  `nivelMaximoInventario` (Imax/S), `faltanteMaximo`, `costoFaltanteAnual`, `puntoReorden`, `demandaDiaria`,
+  `costoCompraAnual`, `precioUnitarioOptimo`, `comparativa` (`List<ComparativaTramo>`), `interpretacionPolitica`
+- `TramoDescuento`, `ComparativaTramo` — records de la tabla de descuentos y su comparativa
+- `InventarioUtils` (round + mapa `datos` de cada paso, tipo="INVENTARIO"), `InventarioValidador`
+  (valida por método; malformado → IllegalArgumentException; los modelos NO tienen resultado infactible)
+- `eoqbasico/EoqBasicoSolver` (Q*=√(2DK/H)), `descuentos/EoqDescuentosSolver` (price-breaks all-units,
+  H=i·C por tramo o H fijo, elige menor CT total con compra), `faltantes/EoqFaltantesSolver`
+  (Q*, S, faltante máx), `produccion/ProduccionEconomicaSolver` (POQ/EPQ, Imax=Q(1−D/P)),
+  `reorden/PuntoReordenSolver` (EOQ + R=d·L; descuenta ciclos completos del lead)
+
 ### application/lp/
 - `SimplexUseCase` / `SimplexService`
 - `GranMUseCase` / `GranMService`
@@ -189,6 +207,10 @@ válidos. Las excepciones se reservan para entradas malformadas.
 
 ### application/entera/
 - `EnteraUseCase` / `EnteraService` — delega en `BranchAndBoundSolver`
+
+### application/inventario/
+- `InventarioUseCase` / `InventarioService` — fachada única: despacha al solver según `modelo.metodo()`
+  (sin método por defecto: `metodo` null → IllegalArgumentException)
 
 ### infrastructure/lp/
 - `SimplexController` — `POST /api/v1/lp/simplex`
@@ -207,10 +229,14 @@ válidos. Las excepciones se reservan para entradas malformadas.
 ### infrastructure/entera/
 - `EnteraController` — `POST /api/v1/entera/branch-and-bound` (bind directo de `ModeloEntero`)
 
+### infrastructure/inventario/
+- `InventarioController` — `POST /api/v1/inventario/{eoq-basico,eoq-descuentos,eoq-faltantes,
+  produccion-economica,punto-reorden}` (cada endpoint fuerza su método; bind directo de `ModeloInventario`)
+
 ### infrastructure/ai/
 - `TutorAiService` — interfaz conversacional, memoria en RAM por sesión (30 mensajes)
 - `ModeloAiService` — interfaz con structured output: `extraerModelo()` y `validarModelo()`
-- `AiConfig` — beans manuales via `AiServices.builder()`; registra las 8 tools;
+- `AiConfig` — beans manuales via `AiServices.builder()`; registra las 10 tools;
   envuelve el `ChatModel` en `RetryingChatModel` antes de pasarlo a los services
 - `RetryingChatModel` — decorador del `ChatModel`: reintenta hasta 3 veces cuando Groq
   devuelve 400 `tool_use_failed` (el LLM generó la tool call con sintaxis malformada);
@@ -233,6 +259,9 @@ válidos. Las excepciones se reservan para entradas malformadas.
   `List<RestriccionInput>`, integralidad como dos `List<String>` (`variablesEnteras`, `variablesBinarias`,
   ambas `required=false` — omitir si vacías) para evitar genéricos anidados — **solicita aprobación HITL**
   con `MetodoResolucion.BRANCH_AND_BOUND`
+- `tools/InventarioTool` — dos `@Tool`: `resolverInventario(...)` (EOQ básico/faltantes/producción/
+  reorden; params escalares con opcionales `required=false`) y `resolverInventarioDescuentos(...)`
+  (tramos como `List<TramoInput>`) — ambas **solicitan aprobación HITL** con `MetodoResolucion.INVENTARIO`
 - `tools/SugerirModeloTool` — `@Tool registrarModeloSugerido(...)`
 - `tools/ValidarModeloTool` — `@Tool registrarValidacion(...)`
 - `tools/SolicitudAprobacionHelper` — paso común: crea la solicitud HITL y avisa al LLM
@@ -240,8 +269,8 @@ válidos. Las excepciones se reservan para entradas malformadas.
 - `AiChatController` — endpoints AI; `/chat` inicializa el store, llama al tutor
   y devuelve `ChatResponse`; `/chat/aprobacion` recibe la decisión humana, reanuda el
   workflow y reanuda al tutor con el desenlace en un mensaje `[SISTEMA]`
-- `dto/` — ChatRequest, ChatResponse (respuesta + 8 campos nullables: modeloSugerido, validacion,
-           resultado, resultadoGrafico, resultadoTransporte, resultadoRed, resultadoEntero, solicitudAprobacion), SolicitudAprobacion
+- `dto/` — ChatRequest, ChatResponse (respuesta + 9 campos nullables: modeloSugerido, validacion,
+           resultado, resultadoGrafico, resultadoTransporte, resultadoRed, resultadoEntero, resultadoInventario, solicitudAprobacion), SolicitudAprobacion
            (modelo tipado `ModeloResoluble`), DecisionAprobacionRequest, SugerirModeloRequest,
            ModeloSugeridoResponse, ValidarModeloRequest, ValidacionResponse
 
@@ -257,12 +286,14 @@ estructural, no de prompt. Ver §7 para el flujo completo.
   `decidir()` (completa el PendingResponse "en caliente", espera el desenlace y evacúa
   el scope), `limpiarExpiradas()` (@Scheduled: descarta solicitudes sin decisión >15 min)
 - `SolicitudAprobacionRegistry` — registro en RAM de solicitudes en vuelo
-- `ResolucionEjecutor` — único punto que invoca los use cases de resolución (LP + Transporte + Redes + Entera);
-  su record `Ejecucion` tiene 5 resultados (solo uno non-null: `resultado` tabular LP,
-  `resultadoGrafico`, `resultadoTransporte`, `resultadoRed` o `resultadoEntero`); genera el resumen textual
-  que el tutor usa. `formatearEntero` guía la justificación de enteros y la interpretación de binarias
-- `MetodoResolucion` (enum): SIMPLEX, GRAN_M, DOS_FASES, GRAFICO, **TRANSPORTE**, **REDES**, **BRANCH_AND_BOUND**
-  (el submétodo viaja dentro del `ModeloTransporte`/`ModeloRed`; la integralidad dentro del `ModeloEntero`)
+- `ResolucionEjecutor` — único punto que invoca los use cases de resolución (LP + Transporte + Redes +
+  Entera + Inventario); su record `Ejecucion` tiene 6 resultados (solo uno non-null: `resultado` tabular LP,
+  `resultadoGrafico`, `resultadoTransporte`, `resultadoRed`, `resultadoEntero` o `resultadoInventario`);
+  genera el resumen textual que el tutor usa. `formatearEntero` guía enteros/binarias; `formatearInventario`
+  resume Q*/costos/política y guía el trade-off ordenar-vs-mantener por modelo
+- `MetodoResolucion` (enum): SIMPLEX, GRAN_M, DOS_FASES, GRAFICO, **TRANSPORTE**, **REDES**, **BRANCH_AND_BOUND**,
+  **INVENTARIO** (el submétodo viaja dentro del `ModeloTransporte`/`ModeloRed`; la integralidad dentro del
+  `ModeloEntero`; el submodelo de inventario dentro del `ModeloInventario`)
 - `DecisionAprobacion` (record)
 - Toda la cadena (`SolicitudAprobacion`, `Registry`, `AprobacionHumanaService`, `Workflow`)
   está tipada a `ModeloResoluble`, no a `ModeloLP` — así admite cualquier módulo futuro
@@ -292,10 +323,15 @@ estructural, no de prompt. Ver §7 para el flujo completo.
 - `infrastructure/transporte/TransporteControllerTest` — controller + serialización Jackson
 - `infrastructure/redes/RedControllerTest` — controller + serialización Jackson (dijkstra/kruskal/asignacion)
 - `infrastructure/entera/EnteraControllerTest` — controller + serialización Jackson (Z*, valorRelajacion, steps)
+- `domain/inventario/*` — `EoqBasicoSolverTest` (Q*/N/CT y ordenar=mantener), `ProduccionEconomicaSolverTest`
+  (Imax<Q*, P≤D → excepción), `EoqFaltantesSolverTest` (S+faltante=Q*), `PuntoReordenSolverTest`
+  (R=d·L, default 360), `EoqDescuentosSolverTest` (elige menor CT total, tramos vacíos → excepción)
+- `infrastructure/inventario/InventarioControllerTest` — controller + serialización Jackson (eoq-básico, descuentos)
+- `infrastructure/ai/tools/InventarioToolSchemaTest` — esquemas de `resolverInventario` y `resolverInventarioDescuentos` sin crash
 - `infrastructure/ai/tools/TransporteToolSchemaTest` — el esquema JSON del `@Tool` se genera sin crash
 - `infrastructure/ai/tools/RedToolSchemaTest` — esquemas de `resolverRed` y `resolverAsignacion` sin crash
 - `infrastructure/ai/tools/EnteraToolSchemaTest` — esquema de `resolverEntera` sin crash
-- `ResolucionAprobadaWorkflowTest` — HITL end-to-end (incluye casos TRANSPORTE, REDES y BRANCH_AND_BOUND devolviendo resultado)
+- `ResolucionAprobadaWorkflowTest` — HITL end-to-end (incluye casos TRANSPORTE, REDES, BRANCH_AND_BOUND e INVENTARIO devolviendo resultado)
 
 ---
 
@@ -317,6 +353,11 @@ estructural, no de prompt. Ver §7 para el flujo completo.
 | POST | `/api/v1/redes/flujo-costo-minimo` | Flujo máximo de costo mínimo (successive shortest paths) |
 | POST | `/api/v1/redes/asignacion` | Asignación óptima agentes→tareas (reducción a MCF) |
 | POST | `/api/v1/entera/branch-and-bound` | PL Entera por Branch & Bound (variables enteras/binarias); árbol de nodos + brecha de integralidad |
+| POST | `/api/v1/inventario/eoq-basico` | EOQ básico (Q*, N, ciclo, costo total, política) |
+| POST | `/api/v1/inventario/eoq-descuentos` | EOQ con descuentos por cantidad (comparativa por tramo + tramo ganador) |
+| POST | `/api/v1/inventario/eoq-faltantes` | EOQ con faltantes/backorders (Q*, S, faltante máx) |
+| POST | `/api/v1/inventario/produccion-economica` | Producción económica POQ/EPQ (Q*, Imax) |
+| POST | `/api/v1/inventario/punto-reorden` | EOQ + punto de reorden R con lead time (demanda diaria) |
 | POST | `/api/v1/ai/chat` | Chat socrático con memoria de sesión |
 | POST | `/api/v1/ai/chat/aprobacion` | HITL: decisión humana (aprobar/rechazar) sobre la solicitud de resolución pendiente |
 | POST | `/api/v1/ai/sugerir-modelo` | Extrae `ModeloLP` desde lenguaje natural |
@@ -566,6 +607,7 @@ el método correcto por el tipo de restricciones del modelo.
 - `docs/RAG_IMPLEMENTATION_GUIDE.md` — (COMPLETADO ) guía de la implementación RAG
 - `docs/RETRY_LLM.md` — retry ante `tool_use_failed` de Groq (RetryingChatModel + fallback del controlador)
 - `docs/TRANSPORTE.md` — (COMPLETADO) módulo Transporte de punta a punta: dominio, MODI, HITL generalizado, grafo de red
+- `docs/INVENTARIOS.md` — (COMPLETADO — backend) módulo Inventarios: 5 modelos deterministas, fórmulas, endpoints, HITL
 - `docs/GUIA_REDES.md` — (COMPLETADO — backend) guía con la que se implementó el módulo Redes
 - `docs/GUIA_REDES_FRONTEND.md` — **guía para la próxima sesión**: cómo construir la UI de Redes
   calcada del frontend de Transporte (NetworkGraph + adaptador + touch-points del chat adaptativo)

@@ -15,10 +15,11 @@
 > reutilizable). Para el próximo módulo (Redes) sigue `docs/GUIA_REDES.md` — reusa NetworkGraph y
 > amplía `moduloDeRespuesta()`.
 >
-> **Backend disponible sin UI aún:** **Redes** y **PL Entera (Branch & Bound)** ya están completos
-> en el backend (REST + tool del chat + HITL), pero su frontend está pendiente. La sección 5 de
-> este documento cubre el contrato de **PL Entera**; su visualización natural es un **árbol de
-> nodos** (cada nodo = una relajación LP con su ramificación/poda).
+> **Backend disponible sin UI aún:** **Redes**, **PL Entera (Branch & Bound)** e **Inventarios
+> deterministas** ya están completos en el backend (REST + tool del chat + HITL), pero su frontend
+> está pendiente. La sección 5 cubre el contrato de **PL Entera** (visualización natural: **árbol de
+> nodos**); la sección 6 cubre **Inventarios** (visualización natural: **desarrollo paso a paso** de
+> fórmulas + tarjetas de resultado por submodelo, sin tableau ni grafo).
 
 | Método | URL | Para qué |
 |--------|-----|----------|
@@ -28,6 +29,7 @@
 | POST | `/api/v1/lp/grafico` | Resolver PL — Método gráfico (2 variables) |
 | POST | `/api/v1/transporte/{esquina-noroeste,costo-minimo,vogel,modi}` | Resolver Transporte (ver `API_CONTRACT.md`) |
 | POST | `/api/v1/entera/branch-and-bound` | Resolver PL Entera — Branch & Bound (variables enteras/binarias) |
+| POST | `/api/v1/inventario/{eoq-basico,eoq-descuentos,eoq-faltantes,produccion-economica,punto-reorden}` | Resolver Inventarios deterministas (ver sección 6) |
 | POST | `/api/v1/ai/chat` | Chat socrático con el tutor Pivot |
 | POST | `/api/v1/ai/chat/aprobacion` | HITL: aprobar/rechazar la resolución pendiente |
 | POST | `/api/v1/ai/sugerir-modelo` | Extraer un `ModeloLP` desde texto libre |
@@ -218,6 +220,7 @@ Los tres últimos campos son **nullable**. Verifica siempre antes de usar:
 | `resultadoTransporte` | Se resolvió un problema de transporte | Mostrar la tabla de transporte |
 | `resultadoRed` | Se resolvió un problema de redes | Mostrar el grafo con la solución |
 | `resultadoEntero` | Se resolvió PL Entera (Branch & Bound) | Mostrar el árbol de nodos (ver sección 5) |
+| `resultadoInventario` | Se resolvió un modelo de inventario | Mostrar el desarrollo paso a paso + resultado (ver sección 6) |
 | `solicitudAprobacion` | El tutor quiere resolver y espera aprobación (HITL) | Mostrar tarjeta Aprobar/Rechazar |
 
 > Como máximo **uno** de los `resultado*` viene non-null en un mismo turno; el resto de este
@@ -570,6 +573,167 @@ Content-Type: application/json
 
 ---
 
+## 6. Resolver Inventarios — modelos deterministas (sin IA)
+
+Endpoints puros del módulo **Inventarios**. Cinco submodelos deterministas con demanda conocida.
+Cada uno tiene su propio endpoint; **el cuerpo es siempre el mismo record `ModeloInventario`** (con
+los campos que aplican al submodelo — el resto se omiten). El endpoint fuerza su método, así que
+`metodo` en el body es opcional.
+
+> **Diferencia clave con los demás módulos:** son **fórmulas cerradas**, no algoritmos iterativos.
+> Por eso `status` es **siempre `OPTIMO`** con datos válidos (no hay `INFACTIBLE`/`NO_ACOTADO`), y una
+> entrada malformada (D≤0, H≤0, P≤D en POQ, tramos vacíos en descuentos…) responde **HTTP 400**.
+> Los `steps` **no son iteraciones** sino los **pasos del cálculo** (parámetros → fórmula →
+> sustitución → resultado). No hay tableau ni grafo: la visualización natural es una lista de pasos
+> más una tarjeta de resultado con los campos del submodelo.
+
+### 6.1 Submodelos, endpoints y parámetros
+
+| Submodelo | Endpoint | Parámetros del body (además de `demanda`, `costoOrden`) |
+|-----------|----------|----------------------------------------------------------|
+| EOQ básico | `/api/v1/inventario/eoq-basico` | `costoMantener` |
+| Producción económica (POQ/EPQ) | `/api/v1/inventario/produccion-economica` | `costoMantener`, `tasaProduccion` (P > demanda) |
+| EOQ con faltantes | `/api/v1/inventario/eoq-faltantes` | `costoMantener`, `costoFaltante` |
+| Punto de reorden | `/api/v1/inventario/punto-reorden` | `costoMantener`, `leadTimeDias`, `diasHabiles` (opcional, def. 360) |
+| EOQ con descuentos | `/api/v1/inventario/eoq-descuentos` | `tramos` (tabla precio) + `tasaMantenerPorcentaje` **o** `costoMantener` |
+
+Campos del `ModeloInventario` (todos los no usados por el submodelo se omiten):
+
+| Campo | Tipo | Para qué |
+|-------|------|----------|
+| `demanda` | `number` | D — demanda conocida por periodo (anual) — **todos** |
+| `costoOrden` | `number` | K — costo de ordenar/preparar un pedido — **todos** |
+| `costoMantener` | `number` | H — costo de mantener por unidad-periodo — todos menos descuentos-con-tasa |
+| `costoFaltante` | `number` | b — costo de faltante por unidad-periodo — solo faltantes |
+| `tasaProduccion` | `number` | P — tasa de producción (P > D) — solo producción económica |
+| `leadTimeDias` | `number` | L — tiempo de entrega en días — solo punto de reorden |
+| `diasHabiles` | `number` | días hábiles al año (def. 360) — solo punto de reorden |
+| `tasaMantenerPorcentaje` | `number` | i — H como fracción del precio (ej. 0.2) — solo descuentos |
+| `tramos` | `TramoDescuento[]` | tabla de precios por cantidad — solo descuentos |
+
+`TramoDescuento`: `{ "cantidadMinima": number, "precioUnitario": number }`.
+
+### 6.2 Requests de ejemplo
+
+```jsonc
+// EOQ básico
+POST /api/v1/inventario/eoq-basico
+{ "demanda": 1000, "costoOrden": 50, "costoMantener": 4 }
+
+// Producción económica (POQ/EPQ)
+POST /api/v1/inventario/produccion-economica
+{ "demanda": 1000, "costoOrden": 50, "costoMantener": 4, "tasaProduccion": 2000 }
+
+// EOQ con faltantes
+POST /api/v1/inventario/eoq-faltantes
+{ "demanda": 1000, "costoOrden": 50, "costoMantener": 4, "costoFaltante": 10 }
+
+// Punto de reorden
+POST /api/v1/inventario/punto-reorden
+{ "demanda": 1200, "costoOrden": 40, "costoMantener": 3, "leadTimeDias": 10, "diasHabiles": 360 }
+
+// EOQ con descuentos por cantidad (H = 20% del precio)
+POST /api/v1/inventario/eoq-descuentos
+{
+  "demanda": 5000, "costoOrden": 49, "tasaMantenerPorcentaje": 0.2,
+  "tramos": [
+    { "cantidadMinima": 0,    "precioUnitario": 5.00 },
+    { "cantidadMinima": 1000, "precioUnitario": 4.80 },
+    { "cantidadMinima": 2500, "precioUnitario": 4.75 }
+  ]
+}
+```
+
+### 6.3 Response exitosa
+
+`SolucionInventario` es un record **unificado**: solo los campos que aplican al submodelo vienen
+poblados, el resto llegan `null`. Ejemplo del EOQ básico:
+
+```json
+{
+  "status": "OPTIMO",
+  "solution": {
+    "cantidadOptima": 158.113883,
+    "costoTotalAnual": 632.455532,
+    "costoOrdenarAnual": 316.227766,
+    "costoMantenerAnual": 316.227766,
+    "numeroPedidos": 6.324555,
+    "tiempoCicloDias": 56.921,
+    "nivelMaximoInventario": null,
+    "faltanteMaximo": null,
+    "costoFaltanteAnual": null,
+    "puntoReorden": null,
+    "demandaDiaria": null,
+    "costoCompraAnual": null,
+    "precioUnitarioOptimo": null,
+    "comparativa": null,
+    "interpretacionPolitica": "Pide 158.11 unidades cada vez que el inventario se agote: realizarás ≈6.32 pedidos al año, uno cada ≈56.92 días hábiles, con un costo total de operación de 632.46 al año (sin contar la compra)."
+  },
+  "steps": [
+    {
+      "numero": 1,
+      "titulo": "Parámetros del modelo",
+      "descripcion": "Demanda anual D = 1000, costo de ordenar K = 50, costo de mantener H = 4 por unidad-año.",
+      "datos": { "tipo": "INVENTARIO", "metodo": "EOQ_BASICO" }
+    },
+    {
+      "numero": 2,
+      "titulo": "Cantidad económica de pedido (Q*)",
+      "descripcion": "Q* = √(2·D·K / H) = √(2·1000·50 / 4) = 158.11 unidades.",
+      "datos": {
+        "tipo": "INVENTARIO", "metodo": "EOQ_BASICO",
+        "formula": "Q* = raíz(2·D·K / H)",
+        "sustitucion": "raíz(2·1000·50 / 4)",
+        "resultado": 158.113883
+      }
+    }
+    // ... un paso por cada etapa del cálculo (N y ciclo, costo total, etc.)
+  ]
+}
+```
+
+### 6.4 Qué campos de `solution` usar por submodelo
+
+Todos traen: `cantidadOptima` (Q\*), `costoTotalAnual`, `costoOrdenarAnual`, `costoMantenerAnual`,
+`numeroPedidos`, `tiempoCicloDias`, `interpretacionPolitica`. Además:
+
+| Submodelo | Campos extra non-null | Notas |
+|-----------|------------------------|-------|
+| EOQ básico | — | en el óptimo `costoOrdenarAnual == costoMantenerAnual` |
+| Producción económica | `nivelMaximoInventario` (Imax) | Imax < Q\* por la reposición gradual |
+| EOQ con faltantes | `nivelMaximoInventario` (S), `faltanteMaximo`, `costoFaltanteAnual` | `S + faltanteMaximo == cantidadOptima` |
+| Punto de reorden | `puntoReorden` (R), `demandaDiaria` (d) | R = d·L; avisa cuándo pedir |
+| EOQ con descuentos | `precioUnitarioOptimo`, `costoCompraAnual`, `comparativa` | `costoTotalAnual` **incluye** la compra (D·C) |
+
+`comparativa` (solo descuentos) es un arreglo de `{ precioUnitario, cantidad, costoTotal, factible }`,
+una fila por tramo evaluado. Úsalo para una tabla "precio → cantidad → costo total", resaltando el
+tramo ganador (el de menor `costoTotal` con `factible: true`, que coincide con `precioUnitarioOptimo`).
+
+### 6.5 Estructura de `steps[i].datos`
+
+| Campo | Tipo | Presente en |
+|-------|------|-------------|
+| `tipo` | `"INVENTARIO"` | todos los pasos |
+| `metodo` | `string` (submodelo) | todos los pasos |
+| `formula` | `string` | pasos de cálculo (fórmula simbólica) |
+| `sustitucion` | `string` | pasos de cálculo con números sustituidos |
+| `resultado` | `number` | pasos de cálculo con un valor computado |
+
+Los tres últimos son opcionales: un paso puede ser solo texto explicativo (todo el detalle va en
+`descripcion`). Para la UI basta con listar `numero`, `titulo`, `descripcion` y, si están, mostrar
+`formula`/`sustitucion`/`resultado` como una línea destacada tipo "fórmula → valor".
+
+### 6.6 Errores HTTP 400
+
+```json
+{ "error": "Debes indicar la demanda (D) con un valor positivo." }
+{ "error": "La tasa de producción P debe ser mayor que la demanda D (P > D); si P ≤ D la producción no alcanza a cubrir la demanda." }
+{ "error": "El modelo con descuentos necesita al menos un tramo de precio (tramos)." }
+{ "error": "Para EOQ con descuentos indica el costo de mantener fijo (costoMantener) o la tasa de mantener como fracción del precio (tasaMantenerPorcentaje)." }
+```
+
+---
+
 ## Flujo completo recomendado para la UI
 
 ```
@@ -722,6 +886,74 @@ interface SolveResultEntera {
   steps: EnteraStep[]
 }
 
+// ── Inventarios (modelos deterministas) ─────────────────────────────────────
+type MetodoInventario =
+  | 'EOQ_BASICO' | 'EOQ_DESCUENTOS' | 'EOQ_FALTANTES'
+  | 'PRODUCCION_ECONOMICA' | 'PUNTO_REORDEN'
+
+interface TramoDescuento {
+  cantidadMinima: number
+  precioUnitario: number
+}
+
+// Body de los endpoints /api/v1/inventario/*. Solo se envían los campos que
+// aplican al submodelo; el endpoint fuerza el metodo, así que es opcional.
+interface ModeloInventario {
+  metodo?: MetodoInventario
+  demanda: number
+  costoOrden: number
+  costoMantener?: number          // todos menos descuentos-con-tasa
+  costoFaltante?: number          // solo EOQ_FALTANTES
+  tasaProduccion?: number         // solo PRODUCCION_ECONOMICA (P > demanda)
+  leadTimeDias?: number           // solo PUNTO_REORDEN
+  diasHabiles?: number            // solo PUNTO_REORDEN (def. 360)
+  tasaMantenerPorcentaje?: number // solo EOQ_DESCUENTOS (fracción del precio)
+  tramos?: TramoDescuento[]       // solo EOQ_DESCUENTOS
+}
+
+// Fila de la comparativa de EOQ con descuentos (una por tramo evaluado).
+interface ComparativaTramo {
+  precioUnitario: number
+  cantidad: number
+  costoTotal: number
+  factible: boolean
+}
+
+// Record unificado: solo los campos del submodelo resuelto vienen non-null.
+interface SolucionInventario {
+  cantidadOptima: number                 // Q*
+  costoTotalAnual: number                // en descuentos INCLUYE la compra
+  costoOrdenarAnual: number
+  costoMantenerAnual: number
+  numeroPedidos: number | null           // N = D/Q*
+  tiempoCicloDias: number | null         // T
+  nivelMaximoInventario: number | null   // Imax (POQ) o S (faltantes)
+  faltanteMaximo: number | null          // solo faltantes
+  costoFaltanteAnual: number | null      // solo faltantes
+  puntoReorden: number | null            // R, solo punto de reorden
+  demandaDiaria: number | null           // d, solo punto de reorden
+  costoCompraAnual: number | null        // D·C, solo descuentos
+  precioUnitarioOptimo: number | null    // solo descuentos
+  comparativa: ComparativaTramo[] | null // solo descuentos
+  interpretacionPolitica: string
+}
+
+// datos de un paso de inventario (paso del cálculo, no iteración)
+interface InventarioStepDatos {
+  tipo: 'INVENTARIO'
+  metodo: MetodoInventario
+  formula?: string       // fórmula simbólica
+  sustitucion?: string   // fórmula con números sustituidos
+  resultado?: number     // valor computado en el paso
+}
+
+interface InventarioStep { numero: number; titulo: string; descripcion: string; datos: InventarioStepDatos }
+interface SolveResultInventario {
+  status: SolveStatus
+  solution: SolucionInventario | null
+  steps: InventarioStep[]
+}
+
 interface StepDatos {
   encabezados: string[]
   tableau: number[][]
@@ -763,6 +995,7 @@ interface ChatResponse {
   resultadoTransporte: SolveResult | null       // non-null → tabla de transporte
   resultadoRed: SolveResult | null              // non-null → grafo de redes
   resultadoEntero: SolveResultEntera | null     // non-null → árbol de Branch & Bound (PL Entera)
+  resultadoInventario: SolveResultInventario | null // non-null → inventario (pasos + tarjeta de resultado)
   solicitudAprobacion: SolicitudAprobacion | null  // non-null → mostrar tarjeta Aprobar/Rechazar
 }
 
@@ -770,14 +1003,15 @@ interface ChatResponse {
 // El solver NO corre hasta que se envíe la decisión a POST /ai/chat/aprobacion.
 type MetodoResolucion =
   | 'SIMPLEX' | 'GRAN_M' | 'DOS_FASES' | 'GRAFICO'
-  | 'TRANSPORTE' | 'REDES' | 'BRANCH_AND_BOUND'
+  | 'TRANSPORTE' | 'REDES' | 'BRANCH_AND_BOUND' | 'INVENTARIO'
 
 interface SolicitudAprobacion {
   solicitudId: string
   metodo: MetodoResolucion
   // el modelo varía según el método: ModeloLP (LP/gráfico), ModeloTransporte,
-  // ModeloRed o ModeloEntero (BRANCH_AND_BOUND). La UI decide cómo pintarlo según `metodo`.
-  modelo: ModeloLP | ModeloEntero | Record<string, unknown>
+  // ModeloRed, ModeloEntero (BRANCH_AND_BOUND) o ModeloInventario (INVENTARIO).
+  // La UI decide cómo pintarlo según `metodo`.
+  modelo: ModeloLP | ModeloEntero | ModeloInventario | Record<string, unknown>
 }
 
 interface DecisionAprobacionRequest {
@@ -836,6 +1070,27 @@ async function resolverSimplex(modelo: ModeloLP): Promise<SolveResult> {
 // Resolver PL Entera — Branch & Bound
 async function resolverBranchAndBound(modelo: ModeloEntero): Promise<SolveResultEntera> {
   const res = await fetch(`${API_BASE}/entera/branch-and-bound`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(modelo),
+  })
+  if (!res.ok) {
+    const err: ApiError = await res.json()
+    throw new Error(err.error)
+  }
+  return res.json()
+}
+
+// Resolver Inventarios — un submodelo por endpoint (mismo body ModeloInventario)
+type SubmodeloInventario =
+  | 'eoq-basico' | 'eoq-descuentos' | 'eoq-faltantes'
+  | 'produccion-economica' | 'punto-reorden'
+
+async function resolverInventario(
+  submodelo: SubmodeloInventario,
+  modelo: ModeloInventario
+): Promise<SolveResultInventario> {
+  const res = await fetch(`${API_BASE}/inventario/${submodelo}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(modelo),
@@ -951,7 +1206,8 @@ base[1]  1.0     2.0     0.0     1.0      6.0   ← restricción 2
 
 1. **Los endpoints de IA pueden tardar 2-8 segundos** (depende de Groq). Muestra un spinner.
 
-2. **El endpoint `/lp/simplex` es instantáneo** (Java puro, sin LLM).
+2. **Los endpoints de solver son instantáneos** (Java puro, sin LLM): `/lp/*`, `/entera/*`,
+   `/inventario/*`. Solo los endpoints `/ai/*` pasan por el LLM y tardan.
 
 3. **El `sesionId` debe persistir en `sessionStorage`** (no `localStorage`) — se pierde
    cuando el usuario cierra la pestaña, que es el comportamiento esperado.
