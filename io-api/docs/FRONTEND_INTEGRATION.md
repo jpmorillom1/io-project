@@ -15,11 +15,13 @@
 > reutilizable). Para el próximo módulo (Redes) sigue `docs/GUIA_REDES.md` — reusa NetworkGraph y
 > amplía `moduloDeRespuesta()`.
 >
-> **Backend disponible sin UI aún:** **Redes**, **PL Entera (Branch & Bound)** e **Inventarios
-> deterministas** ya están completos en el backend (REST + tool del chat + HITL), pero su frontend
-> está pendiente. La sección 5 cubre el contrato de **PL Entera** (visualización natural: **árbol de
-> nodos**); la sección 6 cubre **Inventarios** (visualización natural: **desarrollo paso a paso** de
-> fórmulas + tarjetas de resultado por submodelo, sin tableau ni grafo).
+> **Backend disponible sin UI aún:** **Redes**, **PL Entera (Branch & Bound)**, **Inventarios
+> deterministas** y **Programación Dinámica** ya están completos en el backend (REST + tool del chat +
+> HITL), pero su frontend está pendiente. La sección 5 cubre el contrato de **PL Entera**
+> (visualización natural: **árbol de nodos**); la sección 6 cubre **Inventarios** (visualización
+> natural: **desarrollo paso a paso** de fórmulas + tarjetas de resultado por submodelo, sin tableau ni
+> grafo); la sección 7 cubre **Programación Dinámica** (visualización natural: **una tabla por etapa**
+> + la **política óptima** recuperada hacia adelante).
 
 | Método | URL | Para qué |
 |--------|-----|----------|
@@ -30,6 +32,7 @@
 | POST | `/api/v1/transporte/{esquina-noroeste,costo-minimo,vogel,modi}` | Resolver Transporte (ver `API_CONTRACT.md`) |
 | POST | `/api/v1/entera/branch-and-bound` | Resolver PL Entera — Branch & Bound (variables enteras/binarias) |
 | POST | `/api/v1/inventario/{eoq-basico,eoq-descuentos,eoq-faltantes,produccion-economica,punto-reorden}` | Resolver Inventarios deterministas (ver sección 6) |
+| POST | `/api/v1/dinamica/{asignacion-recursos,mochila,ruta-etapas,planificacion-produccion,reemplazo-equipos}` | Resolver Programación Dinámica determinística (ver sección 7) |
 | POST | `/api/v1/ai/chat` | Chat socrático con el tutor Pivot |
 | POST | `/api/v1/ai/chat/aprobacion` | HITL: aprobar/rechazar la resolución pendiente |
 | POST | `/api/v1/ai/sugerir-modelo` | Extraer un `ModeloLP` desde texto libre |
@@ -221,6 +224,7 @@ Los tres últimos campos son **nullable**. Verifica siempre antes de usar:
 | `resultadoRed` | Se resolvió un problema de redes | Mostrar el grafo con la solución |
 | `resultadoEntero` | Se resolvió PL Entera (Branch & Bound) | Mostrar el árbol de nodos (ver sección 5) |
 | `resultadoInventario` | Se resolvió un modelo de inventario | Mostrar el desarrollo paso a paso + resultado (ver sección 6) |
+| `resultadoDinamica` | Se resolvió un modelo de Programación Dinámica | Mostrar una tabla por etapa + la política óptima (ver sección 7) |
 | `solicitudAprobacion` | El tutor quiere resolver y espera aprobación (HITL) | Mostrar tarjeta Aprobar/Rechazar |
 
 > Como máximo **uno** de los `resultado*` viene non-null en un mismo turno; el resto de este
@@ -734,6 +738,271 @@ Los tres últimos son opcionales: un paso puede ser solo texto explicativo (todo
 
 ---
 
+## 7. Resolver Programación Dinámica — determinística (sin IA)
+
+Endpoints puros del módulo **Programación Dinámica**. Cinco submodelos; **el cuerpo es siempre el mismo
+record `ModeloDinamico`** (solo con los campos que aplican al submodelo — el resto se omiten). El
+endpoint fuerza su método, así que `metodo` en el body es opcional.
+
+> **La idea que gobierna toda la UI de este módulo:** los cinco submodelos son **recursión hacia atrás**,
+> así que devuelven la **misma forma de salida** aunque sus entradas no se parezcan en nada. No hay
+> tableau ni grafo: la visualización natural es **una tabla por etapa** (`tablas`) más la **política
+> óptima** (`politicaOptima`) recuperada hacia adelante. Un componente de tabla genérico sirve para los
+> cinco.
+
+Un modelo de PD debe contener siete elementos, y `SolucionDinamica` tiene un campo para cada uno.
+Muéstralos todos: es el requisito académico del módulo, no un extra.
+
+| Elemento | Campo | Cómo pintarlo |
+|---|---|---|
+| Etapas | `definicionEtapas` | cabecera de la formulación |
+| Estados | `definicionEstados` | cabecera de la formulación |
+| Decisiones | `definicionDecisiones` | cabecera de la formulación |
+| Función de recurrencia | `funcionRecurrencia` | destacada, monoespaciada (también hay una por etapa en `TablaEtapa.recurrencia`) |
+| Tabla de solución | `tablas` | una tabla por etapa (ver 7.4) |
+| Principio de optimalidad | `principioOptimalidad` | bloque de texto explicativo |
+| Interpretación de la política | `politicaOptima` + `interpretacionPolitica` | tabla de decisiones + frase resumen |
+
+### 7.1 Submodelos, endpoints y parámetros
+
+| Submodelo | Endpoint | Campos del body |
+|-----------|----------|-----------------|
+| Asignación de recursos | `/api/v1/dinamica/asignacion-recursos` | `recursoTotal`, `actividades`, `sentido?` |
+| Mochila | `/api/v1/dinamica/mochila` | `capacidad`, `articulos` |
+| Ruta por etapas | `/api/v1/dinamica/ruta-etapas` | `etapasRuta`, `arcos`, `sentido?` |
+| Planificación de producción | `/api/v1/dinamica/planificacion-produccion` | `demandas`, `costoPreparacion`, `costoUnitarioProduccion`, `costoMantener`, `capacidadProduccion?`, `capacidadAlmacen?`, `inventarioInicial?`, `inventarioFinal?` |
+| Reemplazo de equipos | `/api/v1/dinamica/reemplazo-equipos` | `horizonteAnios`, `edadMaxima`, `costoCompra`, `tablaEdades`, `edadInicial?` |
+
+`sentido` (`"MAXIMIZAR"` \| `"MINIMIZAR"`) **solo es configurable** en asignación de recursos (def.
+`MAXIMIZAR`) y ruta por etapas (def. `MINIMIZAR`). En los otros tres el sentido lo fija la naturaleza
+del modelo y **enviar el contrario responde HTTP 400** — no lo expongas en el formulario.
+
+Records anidados:
+
+```jsonc
+ActividadRecurso  { "nombre": string, "retornos": number[] }  // longitud EXACTA = recursoTotal + 1
+ArticuloMochila   { "nombre": string, "peso": number, "valor": number, "unidadesMaximas"?: number }
+EtapaRuta         { "etapa": number, "nodos": string[] }
+ArcoRuta          { "origen": string, "destino": string, "costo": number }
+DatosEdadEquipo   { "edad": number, "ingreso": number, "costoOperacion": number, "valorRescate": number }
+```
+
+Reglas que el formulario debe hacer cumplir (si no, HTTP 400):
+- `actividades[i].retornos` tiene **exactamente `recursoTotal + 1`** valores: el retorno de asignar
+  `0, 1, …, recursoTotal` unidades. Al cambiar `recursoTotal`, redimensiona todas las filas.
+- `articulos[i].peso` entero **positivo**. `unidadesMaximas` **omitido** ⇒ mochila 0/1 (llevar o no).
+  No lo mandes como `null`.
+- `etapasRuta` numeradas **consecutivamente desde 1**; la **etapa 1 tiene exactamente un nodo** (el
+  origen); nombres de nodo **únicos** en toda la red; cada arco va de la etapa `k` a la `k+1`.
+- `tablaEdades` trae una fila por **cada** edad de `0` a `edadMaxima`, sin huecos.
+
+### 7.2 Requests de ejemplo
+
+```jsonc
+// Asignación de recursos: 2 unidades entre 2 actividades → Z* = 8
+POST /api/v1/dinamica/asignacion-recursos
+{
+  "recursoTotal": 2,
+  "actividades": [
+    { "nombre": "A", "retornos": [0, 4, 6] },
+    { "nombre": "B", "retornos": [0, 3, 8] }
+  ]
+}
+
+// Mochila 0/1: capacidad 5 → Z* = 7 (llevar A y B)
+POST /api/v1/dinamica/mochila
+{
+  "capacidad": 5,
+  "articulos": [
+    { "nombre": "A", "peso": 2, "valor": 3 },
+    { "nombre": "B", "peso": 3, "valor": 4 },
+    { "nombre": "C", "peso": 4, "valor": 5 }
+  ]
+}
+
+// Ruta por etapas (problema de la diligencia) → Z* = 11, ruta A-C-E-H-J
+POST /api/v1/dinamica/ruta-etapas
+{
+  "etapasRuta": [
+    { "etapa": 1, "nodos": ["A"] },
+    { "etapa": 2, "nodos": ["B", "C", "D"] },
+    { "etapa": 3, "nodos": ["E", "F", "G"] },
+    { "etapa": 4, "nodos": ["H", "I"] },
+    { "etapa": 5, "nodos": ["J"] }
+  ],
+  "arcos": [
+    { "origen": "A", "destino": "B", "costo": 2 },
+    { "origen": "A", "destino": "C", "costo": 4 }
+    // ... resto de arcos
+  ]
+}
+
+// Planificación de producción → Z* = 17, plan 5-0-4
+POST /api/v1/dinamica/planificacion-produccion
+{ "demandas": [3, 2, 4], "costoPreparacion": 3, "costoUnitarioProduccion": 1, "costoMantener": 1 }
+
+// Reemplazo de equipos → Z* = 38 (conservar, luego reemplazar)
+POST /api/v1/dinamica/reemplazo-equipos
+{
+  "horizonteAnios": 2, "edadMaxima": 2, "costoCompra": 10,
+  "tablaEdades": [
+    { "edad": 0, "ingreso": 20, "costoOperacion": 2, "valorRescate": 8 },
+    { "edad": 1, "ingreso": 18, "costoOperacion": 4, "valorRescate": 6 },
+    { "edad": 2, "ingreso": 15, "costoOperacion": 8, "valorRescate": 3 }
+  ]
+}
+```
+
+### 7.3 Response exitosa
+
+```json
+{
+  "status": "OPTIMO",
+  "solution": {
+    "valorOptimo": 7.0,
+    "tablas": [
+      {
+        "etapa": 3,
+        "nombreEtapa": "Etapa 3 — C",
+        "recurrencia": "f_3(s) = max{ 5 · x : 0 <= x <= min(1, s / 4) }   [C]  [la etapa siguiente vale 0]",
+        "filas": [
+          {
+            "estado": "s = 4",
+            "evaluaciones": [
+              { "decision": "x = 0", "contribucion": 0.0, "valorFuturo": 0.0, "valorTotal": 0.0, "optima": false },
+              { "decision": "x = 1", "contribucion": 5.0, "valorFuturo": 0.0, "valorTotal": 5.0, "optima": true }
+            ],
+            "decisionOptima": "x = 1",
+            "valorOptimo": 5.0
+          }
+        ]
+      }
+    ],
+    "politicaOptima": [
+      { "etapa": 1, "nombreEtapa": "A", "estadoEntrada": "s = 5", "decision": "x = 1", "contribucion": 3.0, "estadoSalida": "s = 3" },
+      { "etapa": 2, "nombreEtapa": "B", "estadoEntrada": "s = 3", "decision": "x = 1", "contribucion": 4.0, "estadoSalida": "s = 0" },
+      { "etapa": 3, "nombreEtapa": "C", "estadoEntrada": "s = 0", "decision": "x = 0", "contribucion": 0.0, "estadoSalida": "s = 0" }
+    ],
+    "rutaOptima": null,
+    "definicionEtapas": "Etapa i = el artículo i (3 en total). Se decide artículo por artículo.",
+    "definicionEstados": "Estado s = capacidad que queda libre al llegar a la etapa i (s = 0..5).",
+    "definicionDecisiones": "Decisión x = unidades del artículo que se cargan, limitadas por su tope y por la capacidad restante.",
+    "funcionRecurrencia": "f_i(s) = max{ v_i · x + f_(i+1)(s - p_i · x) : 0 <= x <= min(u_i, s / p_i) },  con f_(4)(s) = 0",
+    "principioOptimalidad": "Principio de optimalidad de Bellman: cualquiera que sea el estado con el que se llega a una etapa, las decisiones que restan deben formar una política óptima para el subproblema que arranca en ese estado. ...",
+    "interpretacionPolitica": "Carga A y B. Consumes 5 de las 5 unidades de capacidad (sobran 0) y obtienes un valor total de 7, el máximo alcanzable. ..."
+  },
+  "steps": [
+    {
+      "numero": 1,
+      "titulo": "Formulación del modelo",
+      "descripcion": "Hay 3 artículos y una capacidad de 5. Cada etapa es un artículo, ...",
+      "datos": {
+        "tipo": "PROGRAMACION_DINAMICA", "metodo": "MOCHILA",
+        "etapas": "Etapa i = artículo i (i = 1..3)",
+        "estados": "Estado s = capacidad libre al llegar a la etapa (s = 0..5)",
+        "decisiones": "Decisión x = unidades del artículo cargadas, 0 <= x <= min(u_i, s / p_i)",
+        "recurrencia": "f_i(s) = max{ ... }",
+        "principioOptimalidad": "Principio de optimalidad de Bellman: ..."
+      }
+    },
+    {
+      "numero": 2,
+      "titulo": "Etapa 3 — C",
+      "descripcion": "Se evalúa f_3(s) = ... para cada capacidad restante s: ...",
+      "datos": { "tipo": "PROGRAMACION_DINAMICA", "metodo": "MOCHILA", "tabla": { "etapa": 3, "nombreEtapa": "...", "recurrencia": "...", "filas": [] } }
+    },
+    {
+      "numero": 5,
+      "titulo": "Recuperación de la política óptima",
+      "descripcion": "Partiendo del estado inicial s = 5 se lee la decisión óptima de cada etapa ...",
+      "datos": {
+        "tipo": "PROGRAMACION_DINAMICA", "metodo": "MOCHILA",
+        "politica": [ /* igual que solution.politicaOptima */ ],
+        "valorOptimo": 7.0
+      }
+    }
+  ]
+}
+```
+
+**Los `steps` tienen tres formas**, distinguibles por qué clave traen en `datos`:
+
+| Paso | Clave discriminante en `datos` | Contenido |
+|------|-------------------------------|-----------|
+| Formulación (siempre el nº 1) | `etapas`, `estados`, `decisiones`, `recurrencia`, `principioOptimalidad` | el enunciado del modelo |
+| Una por etapa | `tabla` | la `TablaEtapa` de esa etapa |
+| Recuperación (siempre el último) | `politica`, `valorOptimo`, y `rutaOptima` si aplica | la política hacia adelante |
+
+> ⚠ **`tablas` va en el orden de la recursión hacia atrás**: `tablas[0]` es la **última** etapa y
+> `tablas[tablas.length-1]` es la primera. Es el orden en que se calculan y el que hay que mostrar —
+> no lo inviertas. La `politicaOptima`, en cambio, va **hacia adelante** (etapa 1 → n).
+
+### 7.4 Cómo renderizar una `TablaEtapa`
+
+Cada fila es un estado; cada `evaluacion` es una decisión candidata desde ese estado. **El desglose
+`contribucion + valorFuturo = valorTotal` es el punto pedagógico del módulo**: deja ver que el óptimo
+de un estado no es la mejor contribución inmediata, sino la mejor **suma**. Muestra las tres columnas,
+no solo `valorTotal`.
+
+```
+Etapa 3 — C     f_3(s) = max{ 5·x : 0 <= x <= min(1, s/4) }
+
+  estado │ decisión │ contribución │ valor futuro │ total │
+  ───────┼──────────┼──────────────┼──────────────┼───────┤
+   s = 4 │  x = 0   │      0       │      0       │   0   │
+         │  x = 1   │      5       │      0       │   5   │ ★  ← optima: true
+  ───────┼──────────┼──────────────┼──────────────┼───────┤
+   s = 5 │  x = 0   │      0       │      0       │   0   │
+         │  x = 1   │      5       │      0       │   5   │ ★
+```
+
+- `filas[i].decisionOptima` y `filas[i].valorOptimo` son el resumen de la fila (la columna `f_k(s)` que
+  el estudiante escribe a la derecha). Resalta la evaluación con `optima: true`.
+- **Solo aparecen los estados alcanzables.** Los inalcanzables no generan fila (por eso una etapa puede
+  tener menos filas que otra). No asumas un rango contiguo de estados.
+- `estado` y `decision` son **strings ya formateados** por el backend (`"s = 4"`, `"edad = 2"`,
+  `"CONSERVAR"`, `"ir a C"`). No los parsees: píntalos tal cual.
+
+Para `ruta-etapas`, además de las tablas, `solution.rutaOptima` es `string[]` (`["A","C","E","H","J"]`).
+Es el único submodelo con ese campo (en el resto llega `null`), y se presta a reusar
+`components/shared/NetworkGraph.tsx` pintando los nodos por columna/etapa y resaltando la ruta.
+
+### 7.5 `status` y casos especiales
+
+`status` usa la misma enumeración de siempre. **A diferencia de Inventarios, aquí sí hay `INFACTIBLE`**:
+
+| Submodelo | ¿Puede ser `INFACTIBLE`? | Cuándo |
+|-----------|--------------------------|--------|
+| Asignación de recursos | no | `x = 0` siempre es una decisión admisible |
+| Mochila | no | ídem (si nada cabe, `valorOptimo = 0` y la mochila va vacía) |
+| Ruta por etapas | **sí** | no existe ninguna secuencia de arcos del origen a la última etapa |
+| Planificación de producción | **sí** | la capacidad de producción o de almacén no alcanza a cubrir la demanda |
+| Reemplazo de equipos | no | REEMPLAZAR siempre está disponible |
+
+Con `INFACTIBLE` → HTTP **200**, `solution: null`, y `steps` **sí trae** las tablas calculadas hasta el
+punto del fallo más un último paso explicativo (`"Sin ruta al destino"` / `"Plan de producción
+infactible"`). Muéstralas: son la explicación de por qué no hay solución. Verifica `solution` antes de
+acceder a `solution.valorOptimo`.
+
+> Ningún valor infinito aparece nunca en la respuesta. El backend usa ±∞ como centinela interno de
+> "estado inalcanzable", pero esos estados se omiten de las tablas — `JSON.parse` nunca se topará con el
+> token `Infinity`.
+
+### 7.6 Errores HTTP 400
+
+```json
+{ "error": "La actividad 'A' debe traer exactamente 3 retornos (uno por cada asignación posible x = 0..2); trae 2." }
+{ "error": "Debes indicar al menos un artículo (articulos)." }
+{ "error": "El peso del artículo 'A' debe ser un entero positivo." }
+{ "error": "La etapa 1 debe tener exactamente un nodo: el origen del recorrido." }
+{ "error": "El arco A -> E va de la etapa 1 a la 3; en una red por etapas cada arco debe avanzar exactamente una etapa." }
+{ "error": "El nodo 'B' aparece en más de una etapa; los nombres deben ser únicos." }
+{ "error": "tablaEdades debe cubrir todas las edades 0..2; falta la edad 1." }
+{ "error": "El sentido de este modelo es MAXIMIZAR: la mochila siempre maximiza el valor cargado. Omite 'sentido' o indícalo como MAXIMIZAR." }
+```
+
+---
+
 ## Flujo completo recomendado para la UI
 
 ```
@@ -954,6 +1223,129 @@ interface SolveResultInventario {
   steps: InventarioStep[]
 }
 
+// ── Programación Dinámica (determinística) ──────────────────────────────────
+type MetodoDinamico =
+  | 'ASIGNACION_RECURSOS' | 'MOCHILA' | 'RUTA_ETAPAS'
+  | 'PLANIFICACION_PRODUCCION' | 'REEMPLAZO_EQUIPOS'
+
+type SentidoOptimizacion = 'MAXIMIZAR' | 'MINIMIZAR'
+
+interface ActividadRecurso { nombre: string; retornos: number[] }  // longitud = recursoTotal + 1
+interface ArticuloMochila  { nombre: string; peso: number; valor: number; unidadesMaximas?: number }
+interface EtapaRuta        { etapa: number; nodos: string[] }
+interface ArcoRuta         { origen: string; destino: string; costo: number }
+interface DatosEdadEquipo  { edad: number; ingreso: number; costoOperacion: number; valorRescate: number }
+
+// Body de los endpoints /api/v1/dinamica/*. Solo se envían los campos del submodelo;
+// el endpoint fuerza el metodo, así que es opcional.
+interface ModeloDinamico {
+  metodo?: MetodoDinamico
+  sentido?: SentidoOptimizacion   // SOLO configurable en asignación de recursos y ruta por etapas
+
+  // ASIGNACION_RECURSOS
+  recursoTotal?: number
+  actividades?: ActividadRecurso[]
+
+  // MOCHILA
+  capacidad?: number
+  articulos?: ArticuloMochila[]
+
+  // RUTA_ETAPAS
+  etapasRuta?: EtapaRuta[]
+  arcos?: ArcoRuta[]
+
+  // PLANIFICACION_PRODUCCION
+  demandas?: number[]
+  costoPreparacion?: number
+  costoUnitarioProduccion?: number
+  costoMantener?: number
+  capacidadProduccion?: number
+  capacidadAlmacen?: number
+  inventarioInicial?: number
+  inventarioFinal?: number
+
+  // REEMPLAZO_EQUIPOS
+  horizonteAnios?: number
+  edadInicial?: number
+  edadMaxima?: number
+  costoCompra?: number
+  tablaEdades?: DatosEdadEquipo[]
+}
+
+// Una celda de la tabla: valorTotal = contribucion + valorFuturo (muestra las tres columnas).
+interface EvaluacionDecision {
+  decision: string        // ya formateado: "x = 2", "CONSERVAR", "ir a C"
+  contribucion: number    // retorno/costo inmediato de la decisión
+  valorFuturo: number     // f_(k+1) del estado al que lleva
+  valorTotal: number
+  optima: boolean         // la que gana la fila
+}
+
+interface FilaEtapa {
+  estado: string          // ya formateado: "s = 4", "edad = 2", "B"
+  evaluaciones: EvaluacionDecision[]
+  decisionOptima: string
+  valorOptimo: number     // f_k(estado)
+}
+
+interface TablaEtapa {
+  etapa: number
+  nombreEtapa: string
+  recurrencia: string     // la recurrencia instanciada para esta etapa
+  filas: FilaEtapa[]      // solo estados ALCANZABLES — no asumas un rango contiguo
+}
+
+interface DecisionOptima {
+  etapa: number
+  nombreEtapa: string
+  estadoEntrada: string
+  decision: string
+  contribucion: number
+  estadoSalida: string
+}
+
+// Record unificado: solo rutaOptima depende del submodelo (null salvo en RUTA_ETAPAS).
+interface SolucionDinamica {
+  valorOptimo: number
+  tablas: TablaEtapa[]            // ORDEN HACIA ATRÁS: tablas[0] es la ÚLTIMA etapa
+  politicaOptima: DecisionOptima[] // orden hacia adelante: etapa 1 → n
+  rutaOptima: string[] | null     // solo RUTA_ETAPAS
+  definicionEtapas: string
+  definicionEstados: string
+  definicionDecisiones: string
+  funcionRecurrencia: string
+  principioOptimalidad: string
+  interpretacionPolitica: string
+}
+
+// datos de un paso de PD. Discrimina por qué clave trae:
+//   `etapas`  → paso de formulación (siempre el nº 1)
+//   `tabla`   → paso de etapa
+//   `politica`→ paso de recuperación (siempre el último)
+interface DinamicaStepDatos {
+  tipo: 'PROGRAMACION_DINAMICA'
+  metodo: MetodoDinamico
+  // paso de formulación
+  etapas?: string
+  estados?: string
+  decisiones?: string
+  recurrencia?: string
+  principioOptimalidad?: string
+  // paso de etapa
+  tabla?: TablaEtapa
+  // paso de recuperación
+  politica?: DecisionOptima[]
+  valorOptimo?: number
+  rutaOptima?: string[]
+}
+
+interface DinamicaStep { numero: number; titulo: string; descripcion: string; datos: DinamicaStepDatos }
+interface SolveResultDinamica {
+  status: SolveStatus
+  solution: SolucionDinamica | null  // null si INFACTIBLE (ruta sin camino / producción sin capacidad)
+  steps: DinamicaStep[]              // vienen igual con INFACTIBLE: explican por qué
+}
+
 interface StepDatos {
   encabezados: string[]
   tableau: number[][]
@@ -996,6 +1388,7 @@ interface ChatResponse {
   resultadoRed: SolveResult | null              // non-null → grafo de redes
   resultadoEntero: SolveResultEntera | null     // non-null → árbol de Branch & Bound (PL Entera)
   resultadoInventario: SolveResultInventario | null // non-null → inventario (pasos + tarjeta de resultado)
+  resultadoDinamica: SolveResultDinamica | null     // non-null → PD (tablas por etapa + política óptima)
   solicitudAprobacion: SolicitudAprobacion | null  // non-null → mostrar tarjeta Aprobar/Rechazar
 }
 
@@ -1004,14 +1397,16 @@ interface ChatResponse {
 type MetodoResolucion =
   | 'SIMPLEX' | 'GRAN_M' | 'DOS_FASES' | 'GRAFICO'
   | 'TRANSPORTE' | 'REDES' | 'BRANCH_AND_BOUND' | 'INVENTARIO'
+  | 'PROGRAMACION_DINAMICA'
 
 interface SolicitudAprobacion {
   solicitudId: string
   metodo: MetodoResolucion
   // el modelo varía según el método: ModeloLP (LP/gráfico), ModeloTransporte,
-  // ModeloRed, ModeloEntero (BRANCH_AND_BOUND) o ModeloInventario (INVENTARIO).
-  // La UI decide cómo pintarlo según `metodo`.
-  modelo: ModeloLP | ModeloEntero | ModeloInventario | Record<string, unknown>
+  // ModeloRed, ModeloEntero (BRANCH_AND_BOUND), ModeloInventario (INVENTARIO)
+  // o ModeloDinamico (PROGRAMACION_DINAMICA). La UI decide cómo pintarlo según `metodo`.
+  // Ojo: en PD el enum es uno solo — el submodelo concreto va en `modelo.metodo`.
+  modelo: ModeloLP | ModeloEntero | ModeloInventario | ModeloDinamico | Record<string, unknown>
 }
 
 interface DecisionAprobacionRequest {
@@ -1091,6 +1486,27 @@ async function resolverInventario(
   modelo: ModeloInventario
 ): Promise<SolveResultInventario> {
   const res = await fetch(`${API_BASE}/inventario/${submodelo}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(modelo),
+  })
+  if (!res.ok) {
+    const err: ApiError = await res.json()
+    throw new Error(err.error)
+  }
+  return res.json()
+}
+
+// Resolver Programación Dinámica — un submodelo por endpoint (mismo body ModeloDinamico)
+type SubmodeloDinamica =
+  | 'asignacion-recursos' | 'mochila' | 'ruta-etapas'
+  | 'planificacion-produccion' | 'reemplazo-equipos'
+
+async function resolverDinamica(
+  submodelo: SubmodeloDinamica,
+  modelo: ModeloDinamico
+): Promise<SolveResultDinamica> {
+  const res = await fetch(`${API_BASE}/dinamica/${submodelo}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(modelo),
@@ -1207,7 +1623,7 @@ base[1]  1.0     2.0     0.0     1.0      6.0   ← restricción 2
 1. **Los endpoints de IA pueden tardar 2-8 segundos** (depende de Groq). Muestra un spinner.
 
 2. **Los endpoints de solver son instantáneos** (Java puro, sin LLM): `/lp/*`, `/entera/*`,
-   `/inventario/*`. Solo los endpoints `/ai/*` pasan por el LLM y tardan.
+   `/inventario/*`, `/dinamica/*`. Solo los endpoints `/ai/*` pasan por el LLM y tardan.
 
 3. **El `sesionId` debe persistir en `sessionStorage`** (no `localStorage`) — se pierde
    cuando el usuario cierra la pestaña, que es el comportamiento esperado.
@@ -1220,3 +1636,59 @@ base[1]  1.0     2.0     0.0     1.0      6.0   ← restricción 2
 
 6. **`solution` puede ser `null`** en `SolveResult` cuando `status` es `NO_ACOTADO` o
    `INFACTIBLE`. Siempre verifica antes de acceder a `solution.valores`.
+
+7. **En Programación Dinámica, un `INFACTIBLE` sigue trayendo `steps` útiles.** No los escondas: las
+   tablas calculadas hasta el punto del fallo son la explicación de por qué no hay solución.
+
+---
+
+## Cómo construir la UI de Programación Dinámica (próxima sesión)
+
+Calca el patrón del workspace de Inventarios (`/inventario`), no el de LP: aquí no hay tableau ni
+formulario de restricciones. La ruta natural es `/dinamica`.
+
+### Piezas a construir
+
+1. **Selector de submodelo** (5 opciones). Cambia el formulario por completo — las cinco entradas no se
+   parecen. Trátalo como cinco formularios con un contenedor común, no como un formulario con campos
+   condicionales.
+
+2. **Formularios**, con las validaciones de 7.1 en el cliente para evitar 400 evitables:
+   - *Asignación de recursos*: matriz editable `actividades × (0..recursoTotal)`. Al cambiar
+     `recursoTotal`, redimensiona las filas — es el error más fácil de cometer.
+   - *Mochila*: tabla de artículos; checkbox "¿varias unidades?" que revela `unidadesMaximas`
+     (**omitir el campo**, no mandarlo `null`, cuando está desmarcado).
+   - *Ruta por etapas*: constructor de etapas y arcos; valida que la etapa 1 tenga un solo nodo, que los
+     nombres sean únicos y que cada arco avance exactamente una etapa.
+   - *Planificación de producción*: lista de demandas por periodo + tres costos; los cuatro campos
+     opcionales detrás de un "Opciones avanzadas" (omitirlos si están vacíos).
+   - *Reemplazo de equipos*: tabla de edades autogenerada de `0` a `edadMaxima` (así nunca hay huecos).
+   - `sentido` solo se expone en asignación de recursos y ruta por etapas.
+
+3. **`FormulacionCard`** — un componente que muestra los cuatro textos (`definicionEtapas`,
+   `definicionEstados`, `definicionDecisiones`, `funcionRecurrencia`) más `principioOptimalidad`.
+   Es el requisito académico del módulo; ponlo arriba, no en un acordeón escondido.
+
+4. **`TablaEtapaView`** — genérico, sirve para los cinco submodelos (ver 7.4). Recorre `tablas` en el
+   orden en que vienen (hacia atrás) y resalta la evaluación con `optima: true`. Muestra las tres
+   columnas `contribucion` / `valorFuturo` / `valorTotal`.
+
+5. **`PoliticaOptimaTable`** — recorre `politicaOptima` hacia adelante, con `estadoEntrada → decision →
+   estadoSalida` encadenados, y cierra con `interpretacionPolitica` y `valorOptimo`.
+
+6. **Solo para `ruta-etapas`**: reusa `components/shared/NetworkGraph.tsx` pintando los nodos agrupados
+   por etapa y resaltando `rutaOptima`.
+
+### Touch-points del chat adaptativo
+
+- Añade `resultadoDinamica` al tipo `ChatResponse` del cliente.
+- Amplía `moduloDeRespuesta()` en `context/ChatProvider` para navegar a `/dinamica` cuando llegue
+  `resultadoDinamica` (hoy solo distingue `/lp` y `/transporte`).
+- `ApprovalCard` debe saber pintar un `ModeloDinamico` cuando
+  `solicitudAprobacion.metodo === 'PROGRAMACION_DINAMICA'`. El submodelo concreto está en
+  `solicitudAprobacion.modelo.metodo` — úsalo para elegir qué resumen mostrar en la tarjeta.
+
+### Datos de referencia para probar sin backend
+
+Los cinco casos de 7.2 traen su resultado esperado (8, 7, 11, 17, 38). Sirven como fixtures.
+Ver `docs/DINAMICA.md` para el detalle del cálculo de cada uno.

@@ -516,14 +516,110 @@ POST /api/v1/redes/asignacion           → asignación agentes→tareas (vía r
 
 ---
 
+## Programación Dinámica (IMPLEMENTADO)
+
+Cinco endpoints, uno por submodelo. Todos aceptan el mismo body `ModeloDinamico` (cada endpoint fuerza
+su método; los campos que no apliquen al submodelo se omiten) y devuelven `SolveResult<SolucionDinamica>`.
+
+```
+POST /api/v1/dinamica/asignacion-recursos       → reparto de un recurso entre actividades/periodos
+POST /api/v1/dinamica/mochila                   → selección de artículos/proyectos/inversiones
+POST /api/v1/dinamica/ruta-etapas               → ruta secuencial sobre una red por etapas
+POST /api/v1/dinamica/planificacion-produccion  → producción e inventarios por etapas
+POST /api/v1/dinamica/reemplazo-equipos         → conservar o reemplazar un equipo cada año
+```
+
+**Request** (`ModeloDinamico`) — ejemplo de mochila 0/1 (`unidadesMaximas` omitido ⇒ 1):
+```json
+{
+  "capacidad": 5,
+  "articulos": [
+    { "nombre": "A", "peso": 2, "valor": 3 },
+    { "nombre": "B", "peso": 3, "valor": 4 },
+    { "nombre": "C", "peso": 4, "valor": 5 }
+  ]
+}
+```
+
+Ejemplo de ruta por etapas (la etapa 1 lleva un único nodo: el origen; cada arco avanza una etapa):
+```json
+{
+  "etapasRuta": [
+    { "etapa": 1, "nodos": ["A"] },
+    { "etapa": 2, "nodos": ["B", "C"] },
+    { "etapa": 3, "nodos": ["D"] }
+  ],
+  "arcos": [
+    { "origen": "A", "destino": "B", "costo": 2 },
+    { "origen": "A", "destino": "C", "costo": 4 },
+    { "origen": "B", "destino": "D", "costo": 7 },
+    { "origen": "C", "destino": "D", "costo": 3 }
+  ]
+}
+```
+
+**Response** — `solution` es `SolucionDinamica` (`rutaOptima` solo en RUTA_ETAPAS):
+```json
+{
+  "status": "OPTIMO",
+  "solution": {
+    "valorOptimo": 7.0,
+    "tablas": [
+      {
+        "etapa": 3, "nombreEtapa": "Etapa 3 — C", "recurrencia": "f_3(s) = max{ 5 · x ... }",
+        "filas": [
+          {
+            "estado": "s = 4", "decisionOptima": "x = 1", "valorOptimo": 5.0,
+            "evaluaciones": [
+              { "decision": "x = 0", "contribucion": 0.0, "valorFuturo": 0.0, "valorTotal": 0.0, "optima": false },
+              { "decision": "x = 1", "contribucion": 5.0, "valorFuturo": 0.0, "valorTotal": 5.0, "optima": true }
+            ]
+          }
+        ]
+      }
+    ],
+    "politicaOptima": [
+      { "etapa": 1, "nombreEtapa": "A", "estadoEntrada": "s = 5", "decision": "x = 1",
+        "contribucion": 3.0, "estadoSalida": "s = 3" }
+    ],
+    "rutaOptima": null,
+    "definicionEtapas": "Etapa i = el artículo i ...",
+    "definicionEstados": "Estado s = capacidad que queda libre ...",
+    "definicionDecisiones": "Decisión x = unidades del artículo que se cargan ...",
+    "funcionRecurrencia": "f_i(s) = max{ v_i · x + f_(i+1)(s - p_i · x) ... }",
+    "principioOptimalidad": "Principio de optimalidad de Bellman: ...",
+    "interpretacionPolitica": "Carga A y B. Consumes 5 de las 5 unidades ..."
+  },
+  "steps": [
+    { "numero": 1, "titulo": "Formulación del modelo",
+      "datos": { "tipo": "PROGRAMACION_DINAMICA", "metodo": "MOCHILA", "etapas": "...", "estados": "...",
+                 "decisiones": "...", "recurrencia": "...", "principioOptimalidad": "..." } }
+  ]
+}
+```
+
+Las `tablas` van en el orden de la recursión hacia atrás (`tablas[0]` = última etapa). El paso de
+formulación lleva `etapas`/`estados`/`decisiones`/`recurrencia`/`principioOptimalidad`; cada paso de
+etapa lleva `datos.tabla`; el paso final lleva `datos.politica`, `datos.valorOptimo` y, si aplica,
+`datos.rutaOptima`.
+
+**Casos especiales**
+- Entrada malformada (`articulos` vacío, `retornos` de tamaño ≠ `recursoTotal + 1`, `tablaEdades` con
+  huecos, arco que salta dos etapas, sentido contrario al del submodelo) → HTTP 400.
+- No-factibilidad (`ruta-etapas` sin camino al destino; `planificacion-produccion` con capacidad
+  insuficiente) → `status: "INFACTIBLE"` con `solution: null` (no es un error HTTP).
+- Ningún valor infinito aparece nunca en la respuesta: los estados inalcanzables se omiten de las tablas.
+
+---
+
 ## Módulos pendientes (devuelven 404 por ahora)
 
 ```
-POST /api/v1/lp/dual          → pendiente
-
-POST /api/v1/entera/resolver       → pendiente
-POST /api/v1/dinamica/resolver     → pendiente
-POST /api/v1/inventarios/resolver  → pendiente
+POST /api/v1/lp/dual                  → pendiente (método dual)
+POST /api/v1/transporte/hungaro       → pendiente (asignación por método húngaro;
+                                         la asignación ya se resuelve en /api/v1/redes/asignacion)
+POST /api/v1/entera/gomory            → pendiente (cortes de Gomory;
+                                         PL entera ya se resuelve en /api/v1/entera/branch-and-bound)
 ```
 
 ---

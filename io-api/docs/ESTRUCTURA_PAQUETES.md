@@ -51,10 +51,31 @@ io-api/src/main/java/jpap/dev/io_api/
 │       ├── vogel/VogelSolver.java
 │       └── modi/{ModiSolver.java, CicloSteppingStone.java}   corre los 3 iniciales, u/v + ciclo, degeneración
 │
-│   ⏳ redes/      (TODO estructurado — ver docs/GUIA_REDES.md)
-│   ⏳ entera/     (TODO estructurado)
-│   ⏳ dinamica/   (TODO estructurado)
-│   ⏳ inventarios/(TODO estructurado)
+│   ├── redes/                                  ✅ IMPLEMENTADO — ver docs/GUIA_REDES.md
+│   │   ├── {ModeloRed, SolucionRed, MetodoRed, Arista}.java
+│   │   ├── {RedValidador, RedUtils}.java
+│   │   └── dijkstra/ kruskal/ edmondskarp/ flujocostominimo/ asignacion/
+│   │
+│   ├── entera/                                 ✅ IMPLEMENTADO
+│   │   ├── {ModeloEntero, SolucionEntera, TipoVariable}.java
+│   │   └── branchandbound/BranchAndBoundSolver.java   relajación resuelta por GranMSolver
+│   │
+│   ├── inventario/                             ✅ IMPLEMENTADO — ver docs/INVENTARIOS.md
+│   │   ├── {ModeloInventario, SolucionInventario, MetodoInventario}.java
+│   │   ├── {TramoDescuento, ComparativaTramo, InventarioUtils, InventarioValidador}.java
+│   │   └── eoqbasico/ descuentos/ faltantes/ produccion/ reorden/
+│   │
+│   └── dinamica/                               ✅ IMPLEMENTADO — ver docs/DINAMICA.md
+│       ├── ModeloDinamico.java                 record(metodo, sentido, + campos por submodelo) + Builder
+│       ├── SolucionDinamica.java               record(valorOptimo, tablas, politicaOptima, rutaOptima,
+│       │                                              definicionEtapas/Estados/Decisiones,
+│       │                                              funcionRecurrencia, principioOptimalidad,
+│       │                                              interpretacionPolitica) + Builder
+│       ├── {MetodoDinamico, SentidoOptimizacion}.java        enums
+│       ├── {TablaEtapa, FilaEtapa, EvaluacionDecision, DecisionOptima}.java   tabla de solución
+│       ├── {ActividadRecurso, ArticuloMochila, EtapaRuta, ArcoRuta, DatosEdadEquipo}.java   entradas
+│       ├── {DinamicaUtils, DinamicaValidador}.java
+│       └── asignacion/ mochila/ ruta/ produccion/ reemplazo/   un solver por submodelo
 │
 ├── application/                                   ◄ Casos de uso y puertos
 │   └── lp/

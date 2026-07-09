@@ -89,11 +89,51 @@ Z=36 en (2,6)). Mételo en `SimplexTest`.
 
 ---
 
-## 5. Programación Dinámica — TODO ESTRUCTURADO
+## 5. Programación Dinámica — COMPLETADO (backend)
 
-- Difícil de hacer 100% genérico. Plan: tipos parametrizables (asignación de recursos por
-  etapas, mochila por etapas, ruta por etapas) con etapas/estados/decisiones/recurrencia.
-- **Dejar como `// TODO`** hasta que se imparta y se decida el alcance exacto.
+Determinística, por recursión hacia atrás. Cinco submodelos que comparten `ModeloDinamico`,
+`SolucionDinamica` y la misma forma de salida (tablas por etapa + política óptima).
+Detalle completo en `docs/DINAMICA.md`.
+
+### ModeloDinamico
+- **Entrada:** `metodo` (`MetodoDinamico`), `sentido` (`SentidoOptimizacion`, opcional) y los campos
+  del submodelo; el resto van null. Implementa `ModeloResoluble`. Tiene `Builder` (21 componentes).
+- **Validación:** `DinamicaValidador`, un método por submodelo. Malformado → `IllegalArgumentException`.
+  La infactibilidad NUNCA lanza.
+
+### SolucionDinamica
+- **Salida:** `valorOptimo`, `tablas` (`List<TablaEtapa>`), `politicaOptima` (`List<DecisionOptima>`),
+  `rutaOptima` (solo RUTA_ETAPAS), y los cinco textos del modelo: `definicionEtapas`,
+  `definicionEstados`, `definicionDecisiones`, `funcionRecurrencia`, `principioOptimalidad`,
+  `interpretacionPolitica`. Tiene `Builder`.
+- **steps:** paso 1 = formulación; un paso por etapa (con su `TablaEtapa` en `datos.tabla`, en orden de
+  la recursión hacia atrás); paso final = recuperación de la política hacia adelante.
+
+### AsignacionRecursosSolver
+- **Estados:** recurso disponible `s = 0..recursoTotal`. **Decisión:** `x` unidades a la actividad.
+- `f_i(s) = opt{ r_i(x) + f_(i+1)(s − x) : 0 ≤ x ≤ s }`, `f_(n+1)(s) = 0`. Nunca infactible.
+
+### MochilaSolver
+- **Estados:** capacidad libre. **Decisión:** unidades del artículo (`unidadesMaximas` omitido ⇒ 0/1).
+- `f_i(s) = max{ v_i·x + f_(i+1)(s − p_i·x) }`, `f_(n+1)(s) = 0`. Maximiza siempre. Nunca infactible.
+
+### RutaEtapasSolver
+- **Estados:** nodo actual dentro de la etapa. **Decisión:** nodo de la etapa siguiente.
+- `f_k(s) = opt{ c(s,d) + f_(k+1)(d) }`, `f_K(destino) = 0`. Minimiza por defecto.
+- **Puede ser INFACTIBLE** (origen sin camino al destino). Los nodos inalcanzables no generan fila.
+
+### PlanificacionProduccionSolver
+- **Estados:** inventario al inicio del periodo. **Decisión:** cuánto producir.
+- `f_t(i) = min{ K·[x>0] + c·x + h·(i+x−d_t) + f_(t+1)(i+x−d_t) }`; frontera `f_(T+1)(i) = 0` solo si
+  `i == inventarioFinal`. Minimiza siempre. **Puede ser INFACTIBLE** (capacidad insuficiente).
+
+### ReemplazoEquiposSolver
+- **Estados:** edad del equipo. **Decisión:** CONSERVAR o REEMPLAZAR (a la edad máxima, solo reemplazar).
+- `f_t(e) = max{ r(e) − c(e) + f_(t+1)(e+1) ; s(e) − I + r(0) − c(0) + f_(t+1)(1) }`, `f_(n+1)(e) = s(e)`.
+  Maximiza el ingreso neto. Nunca infactible.
+
+> ⚠ Los estados inalcanzables valen ±∞ internamente y se OMITEN de las tablas: un `Infinity` en el JSON
+> de salida no es JSON válido.
 
 ---
 
