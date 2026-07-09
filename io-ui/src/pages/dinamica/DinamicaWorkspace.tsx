@@ -68,7 +68,7 @@ export function DinamicaWorkspace() {
             </div>
           </div>
         ) : (
-          <div className="p-6 max-w-4xl space-y-5">
+          <div className="pt-0 pr-4 pb-6 max-w-4xl space-y-5">
             <Card>
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">

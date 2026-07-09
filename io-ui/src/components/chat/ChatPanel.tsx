@@ -62,7 +62,7 @@ export function ChatPanel() {
       </div>
 
       {/* Mensajes */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-3 min-h-0">
         {mensajes.length === 0 ? (
           <div className="flex flex-col gap-4 pt-4">
             <div className="text-center">

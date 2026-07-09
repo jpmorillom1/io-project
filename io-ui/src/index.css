@@ -76,10 +76,14 @@
 /* Markdown en burbujas del chat del agente */
 .chat-md {
   line-height: 1.6;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .chat-md p {
   margin: 0 0 0.5em;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .chat-md p:last-child {
   margin-bottom: 0;
@@ -111,6 +115,7 @@
   color: var(--ij-cyan);
   border-radius: 3px;
   padding: 0.1em 0.35em;
+  word-break: break-word;
 }
 
 .chat-md pre {
@@ -119,6 +124,7 @@
   border-radius: 4px;
   padding: 0.6em 0.8em;
   overflow-x: auto;
+  max-width: 100%;
   margin: 0.5em 0;
 }
 .chat-md pre code {
@@ -126,6 +132,7 @@
   padding: 0;
   color: var(--ij-text-primary);
   font-size: 0.82em;
+  word-break: normal;
 }
 
 .chat-md blockquote {
@@ -151,8 +158,11 @@
 .chat-md table {
   border-collapse: collapse;
   width: 100%;
+  max-width: 100%;
   font-size: 0.88em;
   margin: 0.5em 0;
+  display: block;
+  overflow-x: auto;
 }
 .chat-md th,
 .chat-md td {
@@ -172,6 +182,7 @@
 .chat-md a {
   color: var(--ij-link);
   text-decoration: underline;
+  overflow-wrap: anywhere;
 }
 
 .chat-md hr {
@@ -180,8 +191,24 @@
   margin: 0.6em 0;
 }
 
-/* KaTeX: hereda el color del tema */
+/* KaTeX: hereda el color del tema y se ajusta al recuadro */
+.chat-md .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-width: 100%;
+  padding: 0.25em 0;
+}
+
 .chat-md .katex {
   color: var(--ij-text-primary);
   font-size: 1em;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  vertical-align: middle;
 }
+
+.chat-md .katex-html {
+  overflow-wrap: break-word;
+}
+
