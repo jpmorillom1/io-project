@@ -1,6 +1,7 @@
 package jpap.dev.io_api.infrastructure.ai;
 
 import jpap.dev.io_api.domain.common.SolveResult;
+import jpap.dev.io_api.domain.dinamica.SolucionDinamica;
 import jpap.dev.io_api.domain.entera.SolucionEntera;
 import jpap.dev.io_api.domain.inventario.SolucionInventario;
 import jpap.dev.io_api.domain.lp.ModeloLP;
@@ -49,6 +50,7 @@ public class ChatContextStore {
         public SolveResult<SolucionRed> resultadoRed;
         public SolveResult<SolucionEntera> resultadoEntero;
         public SolveResult<SolucionInventario> resultadoInventario;
+        public SolveResult<SolucionDinamica> resultadoDinamica;
         public SolicitudAprobacion solicitudAprobacion;
     }
 }

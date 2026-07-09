@@ -22,7 +22,7 @@ un panel de configuración, y el sistema lo resuelve mostrando el **procedimient
 | Transporte | **Esquina Noroeste, Costo Mínimo, Vogel, MODI IMPLEMENTADOS** | Soluciones iniciales (NW/CostoMin/Vogel) + MODI (óptimo, compara las 3 iniciales); balanceo automático. Húngaro (asignación) — pendiente (la asignación se resuelve en Redes vía MCF) |
 | Redes | **Dijkstra, Kruskal, Edmonds-Karp, MCF, Asignación IMPLEMENTADOS (backend)** | Dijkstra (ruta más corta), Kruskal+Union-Find (MST), Edmonds-Karp (flujo máx), Flujo de Costo Mínimo (SSP/Bellman-Ford) y Asignación (reducción a MCF, sin Húngaro). Frontend pendiente — ver `docs/GUIA_REDES_FRONTEND.md` |
 | PL Entera | **Branch & Bound IMPLEMENTADO (backend)** | Branch & Bound con relajación LP resuelta por Gran M; variables enteras y binarias (cota implícita x≤1); poda por infactibilidad y por cota. Gomory — pendiente. Frontend pendiente |
-| Programación Dinámica | TODO estructurado | Tipos parametrizables (asignación/mochila/ruta por etapas) |
+| Programación Dinámica | **Asignación de recursos, Mochila, Ruta por etapas, Planificación de producción, Reemplazo de equipos IMPLEMENTADOS (backend)** | 5 submodelos deterministas por recursión hacia atrás; salida unificada con etapas/estados/decisiones/recurrencia/tabla/principio de optimalidad/política. Frontend pendiente |
 | Inventarios | **EOQ básico, Descuentos, Faltantes, Producción económica (POQ), Punto de reorden IMPLEMENTADOS (backend)** | 5 modelos deterministas: EOQ Wilson; EOQ con descuentos por cantidad (all-units); EOQ con faltantes/backorders; POQ/EPQ (tasa finita P>D); Punto de reorden (R=d·L, días hábiles). Fórmulas cerradas → status siempre OPTIMO. Frontend pendiente |
 
 **"TODO estructurado"** = la carcasa existe (interfaz, contrato I/O, formulario), pero el
@@ -192,6 +192,32 @@ válidos. Las excepciones se reservan para entradas malformadas.
   (Q*, S, faltante máx), `produccion/ProduccionEconomicaSolver` (POQ/EPQ, Imax=Q(1−D/P)),
   `reorden/PuntoReordenSolver` (EOQ + R=d·L; descuenta ciclos completos del lead)
 
+### domain/dinamica/
+- `ModeloDinamico` (record, `implements ModeloResoluble`, con `Builder`) — `metodo` (`MetodoDinamico`),
+  `sentido` (`SentidoOptimizacion`, opcional) y campos nullable por submodelo: `recursoTotal`/`actividades`;
+  `capacidad`/`articulos`; `etapasRuta`/`arcos`; `demandas`/`costoPreparacion`/`costoUnitarioProduccion`/
+  `costoMantener`/`capacidadProduccion`/`capacidadAlmacen`/`inventarioInicial`/`inventarioFinal`;
+  `horizonteAnios`/`edadInicial`/`edadMaxima`/`costoCompra`/`tablaEdades`. Helpers `conMetodo`, `sentidoOrDefault`
+- `MetodoDinamico` (enum): ASIGNACION_RECURSOS, MOCHILA, RUTA_ETAPAS, PLANIFICACION_PRODUCCION, REEMPLAZO_EQUIPOS
+- `SentidoOptimizacion` (enum): MAXIMIZAR, MINIMIZAR — propio de PD, NO reutiliza `domain.lp.TipoObjetivo`
+- `SolucionDinamica` — record unificado con `Builder`; cubre los 7 elementos de un modelo de PD:
+  `valorOptimo`, `tablas`, `politicaOptima`, `rutaOptima` (solo RUTA_ETAPAS), `definicionEtapas`,
+  `definicionEstados`, `definicionDecisiones`, `funcionRecurrencia`, `principioOptimalidad`, `interpretacionPolitica`
+- `TablaEtapa` → `FilaEtapa` → `EvaluacionDecision` (decision, contribucion, valorFuturo, valorTotal, optima);
+  `DecisionOptima` (eslabón de la política recuperada hacia adelante)
+- `ActividadRecurso`, `ArticuloMochila`, `EtapaRuta`, `ArcoRuta`, `DatosEdadEquipo` — records de entrada
+- `DinamicaUtils` (round, `fmt`, `esMejor`/`peorValor` según sentido, mapa `datos` tipo="PROGRAMACION_DINAMICA",
+  constante `PRINCIPIO_OPTIMALIDAD`), `DinamicaValidador` (uno por submodelo; malformado → IllegalArgumentException)
+- `asignacion/AsignacionRecursosSolver` — `f_i(s) = opt{ r_i(x) + f_(i+1)(s−x) }`
+- `mochila/MochilaSolver` — `f_i(s) = max{ v_i·x + f_(i+1)(s − p_i·x) }`; `unidadesMaximas` null ⇒ 0/1
+- `ruta/RutaEtapasSolver` — `f_k(s) = opt{ c(s,d) + f_(k+1)(d) }`; **puede ser INFACTIBLE**
+- `produccion/PlanificacionProduccionSolver` — `f_t(i) = min{ K·[x>0] + c·x + h·j + f_(t+1)(j) }`,
+  `j = i+x−d_t`; **puede ser INFACTIBLE**; propaga estados alcanzables hacia adelante para acotar las tablas
+- `reemplazo/ReemplazoEquiposSolver` — `f_t(e) = max{ CONSERVAR ; REEMPLAZAR }`, `f_(n+1)(e) = s(e)`
+
+> ⚠ Los estados inalcanzables valen ±∞ internamente y se OMITEN de las filas de la tabla. Jackson
+> serializaría un infinito como el token `Infinity`, que **no es JSON válido** — nunca debe salir del solver.
+
 ### application/lp/
 - `SimplexUseCase` / `SimplexService`
 - `GranMUseCase` / `GranMService`
@@ -210,6 +236,10 @@ válidos. Las excepciones se reservan para entradas malformadas.
 
 ### application/inventario/
 - `InventarioUseCase` / `InventarioService` — fachada única: despacha al solver según `modelo.metodo()`
+  (sin método por defecto: `metodo` null → IllegalArgumentException)
+
+### application/dinamica/
+- `DinamicaUseCase` / `DinamicaService` — fachada única: despacha al solver según `modelo.metodo()`
   (sin método por defecto: `metodo` null → IllegalArgumentException)
 
 ### infrastructure/lp/
@@ -233,10 +263,14 @@ válidos. Las excepciones se reservan para entradas malformadas.
 - `InventarioController` — `POST /api/v1/inventario/{eoq-basico,eoq-descuentos,eoq-faltantes,
   produccion-economica,punto-reorden}` (cada endpoint fuerza su método; bind directo de `ModeloInventario`)
 
+### infrastructure/dinamica/
+- `DinamicaController` — `POST /api/v1/dinamica/{asignacion-recursos,mochila,ruta-etapas,
+  planificacion-produccion,reemplazo-equipos}` (cada endpoint fuerza su método; bind directo de `ModeloDinamico`)
+
 ### infrastructure/ai/
 - `TutorAiService` — interfaz conversacional, memoria en RAM por sesión (30 mensajes)
 - `ModeloAiService` — interfaz con structured output: `extraerModelo()` y `validarModelo()`
-- `AiConfig` — beans manuales via `AiServices.builder()`; registra las 10 tools;
+- `AiConfig` — beans manuales via `AiServices.builder()`; registra los 11 componentes de tools (17 `@Tool`);
   envuelve el `ChatModel` en `RetryingChatModel` antes de pasarlo a los services
 - `RetryingChatModel` — decorador del `ChatModel`: reintenta hasta 3 veces cuando Groq
   devuelve 400 `tool_use_failed` (el LLM generó la tool call con sintaxis malformada);
@@ -262,6 +296,11 @@ válidos. Las excepciones se reservan para entradas malformadas.
 - `tools/InventarioTool` — dos `@Tool`: `resolverInventario(...)` (EOQ básico/faltantes/producción/
   reorden; params escalares con opcionales `required=false`) y `resolverInventarioDescuentos(...)`
   (tramos como `List<TramoInput>`) — ambas **solicitan aprobación HITL** con `MetodoResolucion.INVENTARIO`
+- `tools/DinamicaTool` — cinco `@Tool`, una por submodelo de PD: `resolverPdAsignacionRecursos`,
+  `resolverPdMochila`, `resolverPdRutaEtapas`, `resolverPdPlanificacionProduccion`, `resolverPdReemplazoEquipos`.
+  Las listas de estructuras van como `List<Record>` plano (`ActividadInput`, `ArticuloInput`, `EtapaInput`,
+  `ArcoInput`, `EdadInput`) para evitar genéricos anidados; opcionales con `@P(required=false)` y
+  `@JsonProperty(required=false)`. Todas **solicitan aprobación HITL** con `MetodoResolucion.PROGRAMACION_DINAMICA`
 - `tools/SugerirModeloTool` — `@Tool registrarModeloSugerido(...)`
 - `tools/ValidarModeloTool` — `@Tool registrarValidacion(...)`
 - `tools/SolicitudAprobacionHelper` — paso común: crea la solicitud HITL y avisa al LLM
@@ -269,8 +308,9 @@ válidos. Las excepciones se reservan para entradas malformadas.
 - `AiChatController` — endpoints AI; `/chat` inicializa el store, llama al tutor
   y devuelve `ChatResponse`; `/chat/aprobacion` recibe la decisión humana, reanuda el
   workflow y reanuda al tutor con el desenlace en un mensaje `[SISTEMA]`
-- `dto/` — ChatRequest, ChatResponse (respuesta + 9 campos nullables: modeloSugerido, validacion,
-           resultado, resultadoGrafico, resultadoTransporte, resultadoRed, resultadoEntero, resultadoInventario, solicitudAprobacion), SolicitudAprobacion
+- `dto/` — ChatRequest, ChatResponse (respuesta + 10 campos nullables: modeloSugerido, validacion,
+           resultado, resultadoGrafico, resultadoTransporte, resultadoRed, resultadoEntero, resultadoInventario,
+           resultadoDinamica, solicitudAprobacion), SolicitudAprobacion
            (modelo tipado `ModeloResoluble`), DecisionAprobacionRequest, SugerirModeloRequest,
            ModeloSugeridoResponse, ValidarModeloRequest, ValidacionResponse
 
@@ -287,13 +327,17 @@ estructural, no de prompt. Ver §7 para el flujo completo.
   el scope), `limpiarExpiradas()` (@Scheduled: descarta solicitudes sin decisión >15 min)
 - `SolicitudAprobacionRegistry` — registro en RAM de solicitudes en vuelo
 - `ResolucionEjecutor` — único punto que invoca los use cases de resolución (LP + Transporte + Redes +
-  Entera + Inventario); su record `Ejecucion` tiene 6 resultados (solo uno non-null: `resultado` tabular LP,
-  `resultadoGrafico`, `resultadoTransporte`, `resultadoRed`, `resultadoEntero` o `resultadoInventario`);
+  Entera + Inventario + Dinámica); su record `Ejecucion` tiene 7 resultados (solo uno non-null: `resultado`
+  tabular LP, `resultadoGrafico`, `resultadoTransporte`, `resultadoRed`, `resultadoEntero`,
+  `resultadoInventario` o `resultadoDinamica`);
   genera el resumen textual que el tutor usa. `formatearEntero` guía enteros/binarias; `formatearInventario`
-  resume Q*/costos/política y guía el trade-off ordenar-vs-mantener por modelo
+  resume Q*/costos/política y guía el trade-off ordenar-vs-mantener por modelo; `formatearDinamica` expone la
+  formulación (etapas/estados/decisiones/recurrencia), la política etapa a etapa y empuja a enunciar el
+  principio de optimalidad
 - `MetodoResolucion` (enum): SIMPLEX, GRAN_M, DOS_FASES, GRAFICO, **TRANSPORTE**, **REDES**, **BRANCH_AND_BOUND**,
-  **INVENTARIO** (el submétodo viaja dentro del `ModeloTransporte`/`ModeloRed`; la integralidad dentro del
-  `ModeloEntero`; el submodelo de inventario dentro del `ModeloInventario`)
+  **INVENTARIO**, **PROGRAMACION_DINAMICA** (el submétodo viaja dentro del `ModeloTransporte`/`ModeloRed`;
+  la integralidad dentro del `ModeloEntero`; el submodelo de inventario dentro del `ModeloInventario`;
+  el submodelo de PD dentro del `ModeloDinamico`)
 - `DecisionAprobacion` (record)
 - Toda la cadena (`SolicitudAprobacion`, `Registry`, `AprobacionHumanaService`, `Workflow`)
   está tipada a `ModeloResoluble`, no a `ModeloLP` — así admite cualquier módulo futuro
@@ -327,11 +371,20 @@ estructural, no de prompt. Ver §7 para el flujo completo.
   (Imax<Q*, P≤D → excepción), `EoqFaltantesSolverTest` (S+faltante=Q*), `PuntoReordenSolverTest`
   (R=d·L, default 360), `EoqDescuentosSolverTest` (elige menor CT total, tramos vacíos → excepción)
 - `infrastructure/inventario/InventarioControllerTest` — controller + serialización Jackson (eoq-básico, descuentos)
+- `domain/dinamica/*` — `AsignacionRecursosSolverTest` (Z*=8, orden de las tablas), `MochilaSolverTest`
+  (0/1 → 7; multiunidad → 9; capacidad insuficiente = OPTIMO vacío), `RutaEtapasSolverTest` (diligencia
+  clásica → 11 por A-C-E-H-J; sin camino → INFACTIBLE; nodo intermedio sin salida no rompe la recursión),
+  `PlanificacionProduccionSolverTest` (Z*=17 con plan 5-0-4; capacidad insuficiente → INFACTIBLE),
+  `ReemplazoEquiposSolverTest` (Z*=38 conservar+reemplazar; a la edad máxima solo cabe REEMPLAZAR)
+- `infrastructure/dinamica/DinamicaControllerTest` — controller + serialización Jackson; **reparsea el JSON
+  para garantizar que ningún `Infinity` se escapa** de las tablas
 - `infrastructure/ai/tools/InventarioToolSchemaTest` — esquemas de `resolverInventario` y `resolverInventarioDescuentos` sin crash
+- `infrastructure/ai/tools/DinamicaToolSchemaTest` — los 5 esquemas de `DinamicaTool` sin crash
 - `infrastructure/ai/tools/TransporteToolSchemaTest` — el esquema JSON del `@Tool` se genera sin crash
 - `infrastructure/ai/tools/RedToolSchemaTest` — esquemas de `resolverRed` y `resolverAsignacion` sin crash
 - `infrastructure/ai/tools/EnteraToolSchemaTest` — esquema de `resolverEntera` sin crash
-- `ResolucionAprobadaWorkflowTest` — HITL end-to-end (incluye casos TRANSPORTE, REDES, BRANCH_AND_BOUND e INVENTARIO devolviendo resultado)
+- `ResolucionAprobadaWorkflowTest` — HITL end-to-end (incluye casos TRANSPORTE, REDES, BRANCH_AND_BOUND,
+  INVENTARIO y PROGRAMACION_DINAMICA devolviendo resultado)
 
 ---
 
@@ -358,6 +411,11 @@ estructural, no de prompt. Ver §7 para el flujo completo.
 | POST | `/api/v1/inventario/eoq-faltantes` | EOQ con faltantes/backorders (Q*, S, faltante máx) |
 | POST | `/api/v1/inventario/produccion-economica` | Producción económica POQ/EPQ (Q*, Imax) |
 | POST | `/api/v1/inventario/punto-reorden` | EOQ + punto de reorden R con lead time (demanda diaria) |
+| POST | `/api/v1/dinamica/asignacion-recursos` | PD: reparto de un recurso entre actividades/periodos (presupuesto) |
+| POST | `/api/v1/dinamica/mochila` | PD: selección de artículos/proyectos/inversiones (0/1 o multiunidad) |
+| POST | `/api/v1/dinamica/ruta-etapas` | PD: ruta secuencial sobre una red por etapas (diligencia) |
+| POST | `/api/v1/dinamica/planificacion-produccion` | PD: producción e inventarios por etapas (demanda por periodo) |
+| POST | `/api/v1/dinamica/reemplazo-equipos` | PD: conservar o reemplazar un equipo cada año |
 | POST | `/api/v1/ai/chat` | Chat socrático con memoria de sesión |
 | POST | `/api/v1/ai/chat/aprobacion` | HITL: decisión humana (aprobar/rechazar) sobre la solicitud de resolución pendiente |
 | POST | `/api/v1/ai/sugerir-modelo` | Extrae `ModeloLP` desde lenguaje natural |
@@ -516,6 +574,10 @@ también viven en RAM — persistirlas requeriría un `AgenticScopeStore`.
   (es lo que lee `JsonSchemaElementUtils.isRequired`), y en la `@Description` pide OMITIR el campo,
   nunca enviar `null` (ver `RedTool.AristaInput`).
 - ❌ No re-tipes la cadena HITL a un módulo concreto — usa `ModeloResoluble` (interfaz marcador en `domain/common`).
+- ❌ No dejes que un **infinito** llegue a un record de salida ni al mapa `datos` de un paso: Jackson lo
+  serializa como el token `Infinity`, que no es JSON válido y rompe a cualquier cliente. En PD los estados
+  inalcanzables valen ±∞ internamente y se OMITEN de `TablaEtapa.filas`; si el estado inicial resulta
+  inalcanzable, el resultado es `SolveStatus.INFACTIBLE` con `solution = null`.
 
 ---
 
@@ -608,6 +670,8 @@ el método correcto por el tipo de restricciones del modelo.
 - `docs/RETRY_LLM.md` — retry ante `tool_use_failed` de Groq (RetryingChatModel + fallback del controlador)
 - `docs/TRANSPORTE.md` — (COMPLETADO) módulo Transporte de punta a punta: dominio, MODI, HITL generalizado, grafo de red
 - `docs/INVENTARIOS.md` — (COMPLETADO — backend) módulo Inventarios: 5 modelos deterministas, fórmulas, endpoints, HITL
+- `docs/DINAMICA.md` — (COMPLETADO — backend) módulo Programación Dinámica: los 7 elementos del modelo y dónde
+  vive cada uno, las 5 recurrencias, endpoints, HITL y los valores de referencia de los tests
 - `docs/GUIA_REDES.md` — (COMPLETADO — backend) guía con la que se implementó el módulo Redes
 - `docs/GUIA_REDES_FRONTEND.md` — **guía para la próxima sesión**: cómo construir la UI de Redes
   calcada del frontend de Transporte (NetworkGraph + adaptador + touch-points del chat adaptativo)

@@ -14,6 +14,9 @@ package jpap.dev.io_api.infrastructure.ai.hitl;
  * INVENTARIO agrupa los cinco modelos deterministas de inventario (EOQ básico, con descuentos,
  * con faltantes, producción económica y punto de reorden); el submodelo concreto viaja dentro
  * del ModeloInventario.
+ * PROGRAMACION_DINAMICA agrupa los cinco submodelos deterministas de PD (asignación de recursos,
+ * mochila, ruta por etapas, planificación de producción y reemplazo de equipos); el submodelo
+ * concreto viaja dentro del ModeloDinamico.
  */
 public enum MetodoResolucion {
     SIMPLEX,
@@ -23,5 +26,6 @@ public enum MetodoResolucion {
     TRANSPORTE,
     REDES,
     BRANCH_AND_BOUND,
-    INVENTARIO
+    INVENTARIO,
+    PROGRAMACION_DINAMICA
 }

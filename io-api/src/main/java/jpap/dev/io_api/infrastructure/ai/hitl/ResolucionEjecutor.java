@@ -1,5 +1,6 @@
 package jpap.dev.io_api.infrastructure.ai.hitl;
 
+import jpap.dev.io_api.application.dinamica.DinamicaUseCase;
 import jpap.dev.io_api.application.entera.EnteraUseCase;
 import jpap.dev.io_api.application.inventario.InventarioUseCase;
 import jpap.dev.io_api.application.lp.DosFasesUseCase;
@@ -12,6 +13,10 @@ import jpap.dev.io_api.domain.common.ModeloResoluble;
 import jpap.dev.io_api.domain.common.SolveResult;
 import jpap.dev.io_api.domain.common.SolveStatus;
 import jpap.dev.io_api.domain.common.SolveStep;
+import jpap.dev.io_api.domain.dinamica.DecisionOptima;
+import jpap.dev.io_api.domain.dinamica.ModeloDinamico;
+import jpap.dev.io_api.domain.dinamica.SolucionDinamica;
+import jpap.dev.io_api.domain.dinamica.TablaEtapa;
 import jpap.dev.io_api.domain.entera.ModeloEntero;
 import jpap.dev.io_api.domain.entera.SolucionEntera;
 import jpap.dev.io_api.domain.entera.TipoVariable;
@@ -54,6 +59,7 @@ public class ResolucionEjecutor {
     private final RedUseCase redUseCase;
     private final EnteraUseCase enteraUseCase;
     private final InventarioUseCase inventarioUseCase;
+    private final DinamicaUseCase dinamicaUseCase;
 
     public ResolucionEjecutor(SimplexUseCase simplexUseCase,
                               GranMUseCase granMUseCase,
@@ -62,7 +68,8 @@ public class ResolucionEjecutor {
                               TransporteUseCase transporteUseCase,
                               RedUseCase redUseCase,
                               EnteraUseCase enteraUseCase,
-                              InventarioUseCase inventarioUseCase) {
+                              InventarioUseCase inventarioUseCase,
+                              DinamicaUseCase dinamicaUseCase) {
         this.simplexUseCase = simplexUseCase;
         this.granMUseCase = granMUseCase;
         this.dosFasesUseCase = dosFasesUseCase;
@@ -71,13 +78,15 @@ public class ResolucionEjecutor {
         this.redUseCase = redUseCase;
         this.enteraUseCase = enteraUseCase;
         this.inventarioUseCase = inventarioUseCase;
+        this.dinamicaUseCase = dinamicaUseCase;
     }
 
     /**
-     * Resultado de una ejecución aprobada. Solo uno de los seis resultados es non-null:
+     * Resultado de una ejecución aprobada. Solo uno de los siete resultados es non-null:
      * resultado (tabular LP: Simplex/GranM/DosFases), resultadoGrafico (método gráfico),
      * resultadoTransporte (métodos de transporte), resultadoRed (problemas de redes),
-     * resultadoEntero (PL Entera por Branch &amp; Bound) o resultadoInventario (modelos de inventario).
+     * resultadoEntero (PL Entera por Branch &amp; Bound), resultadoInventario (modelos de inventario)
+     * o resultadoDinamica (programación dinámica determinística).
      */
     public record Ejecucion(
             SolveResult<SolucionLP> resultado,
@@ -86,6 +95,7 @@ public class ResolucionEjecutor {
             SolveResult<SolucionRed> resultadoRed,
             SolveResult<SolucionEntera> resultadoEntero,
             SolveResult<SolucionInventario> resultadoInventario,
+            SolveResult<SolucionDinamica> resultadoDinamica,
             String resumenParaTutor
     ) {}
 
@@ -95,32 +105,38 @@ public class ResolucionEjecutor {
         if (metodo == MetodoResolucion.TRANSPORTE) {
             ModeloTransporte mt = (ModeloTransporte) modelo;
             SolveResult<SolucionTransporte> resultado = transporteUseCase.resolver(mt);
-            return new Ejecucion(null, null, resultado, null, null, null, formatearTransporte(resultado, mt));
+            return new Ejecucion(null, null, resultado, null, null, null, null, formatearTransporte(resultado, mt));
         }
 
         if (metodo == MetodoResolucion.REDES) {
             ModeloRed mr = (ModeloRed) modelo;
             SolveResult<SolucionRed> resultado = redUseCase.resolver(mr);
-            return new Ejecucion(null, null, null, resultado, null, null, formatearRed(resultado, mr));
+            return new Ejecucion(null, null, null, resultado, null, null, null, formatearRed(resultado, mr));
         }
 
         if (metodo == MetodoResolucion.BRANCH_AND_BOUND) {
             ModeloEntero me = (ModeloEntero) modelo;
             SolveResult<SolucionEntera> resultado = enteraUseCase.resolver(me);
-            return new Ejecucion(null, null, null, null, resultado, null, formatearEntero(resultado, me));
+            return new Ejecucion(null, null, null, null, resultado, null, null, formatearEntero(resultado, me));
         }
 
         if (metodo == MetodoResolucion.INVENTARIO) {
             ModeloInventario mi = (ModeloInventario) modelo;
             SolveResult<SolucionInventario> resultado = inventarioUseCase.resolver(mi);
-            return new Ejecucion(null, null, null, null, null, resultado, formatearInventario(resultado, mi));
+            return new Ejecucion(null, null, null, null, null, resultado, null, formatearInventario(resultado, mi));
+        }
+
+        if (metodo == MetodoResolucion.PROGRAMACION_DINAMICA) {
+            ModeloDinamico md = (ModeloDinamico) modelo;
+            SolveResult<SolucionDinamica> resultado = dinamicaUseCase.resolver(md);
+            return new Ejecucion(null, null, null, null, null, null, resultado, formatearDinamica(resultado, md));
         }
 
         ModeloLP mlp = (ModeloLP) modelo;
 
         if (metodo == MetodoResolucion.GRAFICO) {
             SolveResult<SolucionGrafica> resultado = graficoUseCase.resolver(mlp);
-            return new Ejecucion(null, resultado, null, null, null, null, formatearGrafico(resultado));
+            return new Ejecucion(null, resultado, null, null, null, null, null, formatearGrafico(resultado));
         }
 
         SolveResult<SolucionLP> resultado = switch (metodo) {
@@ -132,8 +148,9 @@ public class ResolucionEjecutor {
             case REDES -> throw new IllegalStateException("cubierto arriba");
             case BRANCH_AND_BOUND -> throw new IllegalStateException("cubierto arriba");
             case INVENTARIO -> throw new IllegalStateException("cubierto arriba");
+            case PROGRAMACION_DINAMICA -> throw new IllegalStateException("cubierto arriba");
         };
-        return new Ejecucion(resultado, null, null, null, null, null, formatearTabular(resultado, metodo));
+        return new Ejecucion(resultado, null, null, null, null, null, null, formatearTabular(resultado, metodo));
     }
 
     // ─── formato para el tutor (movido desde las @Tool de resolución) ────────────
@@ -148,6 +165,7 @@ public class ResolucionEjecutor {
             case REDES -> "Redes";             // no se alcanza: redes se formatea aparte
             case BRANCH_AND_BOUND -> "Branch & Bound"; // no se alcanza: PL Entera se formatea aparte
             case INVENTARIO -> "Inventario";   // no se alcanza: inventario se formatea aparte
+            case PROGRAMACION_DINAMICA -> "Programación Dinámica"; // no se alcanza: PD se formatea aparte
         };
         StringBuilder sb = new StringBuilder();
         sb.append("=== RESULTADO DEL SOLVER (").append(nombre).append(") ===\n");
@@ -560,6 +578,93 @@ public class ResolucionEjecutor {
                     + "obligar a pedir tanto que el costo de mantener anule el ahorro en la compra.\n");
         }
         sb.append("  3. Verifique manualmente algún componente del costo para validar el resultado.");
+
+        return sb.toString();
+    }
+
+    private String formatearDinamica(SolveResult<SolucionDinamica> r, ModeloDinamico modelo) {
+        String nombre = switch (modelo.metodo()) {
+            case ASIGNACION_RECURSOS -> "Asignación de recursos por etapas";
+            case MOCHILA -> "Mochila (selección de proyectos/artículos)";
+            case RUTA_ETAPAS -> "Ruta secuencial sobre una red por etapas";
+            case PLANIFICACION_PRODUCCION -> "Planificación de producción e inventarios por etapas";
+            case REEMPLAZO_EQUIPOS -> "Reemplazo de equipos";
+        };
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("=== RESULTADO DEL SOLVER (Programación Dinámica — ").append(nombre).append(") ===\n");
+        sb.append("Estado: ").append(r.status().name()).append("\n");
+
+        if (r.status() == SolveStatus.INFACTIBLE || r.solution() == null) {
+            switch (modelo.metodo()) {
+                case RUTA_ETAPAS -> sb.append("Desde el origen NO existe ninguna secuencia de arcos que llegue a "
+                        + "la última etapa: la red está rota.\n");
+                case PLANIFICACION_PRODUCCION -> sb.append("Ningún plan de producción cubre la demanda sin "
+                        + "faltantes: la capacidad de producción o la de almacén son demasiado ajustadas.\n");
+                default -> sb.append("El problema no tiene solución factible.\n");
+            }
+            sb.append("Pregunta al estudiante qué dato del modelo revisaría primero.\n");
+            return sb.toString();
+        }
+
+        SolucionDinamica sol = r.solution();
+
+        sb.append("\n--- FORMULACIÓN ---\n");
+        sb.append("Etapas: ").append(sol.definicionEtapas()).append("\n");
+        sb.append("Estados: ").append(sol.definicionEstados()).append("\n");
+        sb.append("Decisiones: ").append(sol.definicionDecisiones()).append("\n");
+        sb.append("Función de recurrencia: ").append(sol.funcionRecurrencia()).append("\n");
+
+        sb.append("\nValor óptimo = ").append(sol.valorOptimo()).append("\n");
+        if (sol.rutaOptima() != null) {
+            sb.append("Ruta óptima: ").append(String.join(" → ", sol.rutaOptima())).append("\n");
+        }
+
+        sb.append("\n--- POLÍTICA ÓPTIMA (etapa por etapa) ---\n");
+        for (DecisionOptima d : sol.politicaOptima()) {
+            sb.append("  ").append(d.nombreEtapa())
+              .append(": llega con ").append(d.estadoEntrada())
+              .append(", decide ").append(d.decision())
+              .append(" (contribución ").append(d.contribucion()).append(")")
+              .append(", pasa a ").append(d.estadoSalida()).append("\n");
+        }
+
+        sb.append("\n--- TABLAS DE SOLUCIÓN (recursión hacia atrás) ---\n");
+        for (TablaEtapa tabla : sol.tablas()) {
+            sb.append(tabla.nombreEtapa()).append(": ").append(tabla.recurrencia())
+              .append("  → ").append(tabla.filas().size()).append(" estado(s) evaluado(s)\n");
+        }
+
+        sb.append("\n--- PASOS DEL CÁLCULO ---\n");
+        for (SolveStep step : r.steps()) {
+            sb.append("Paso ").append(step.numero()).append(": ").append(step.titulo()).append("\n");
+        }
+
+        sb.append("\nPolítica recomendada: ").append(sol.interpretacionPolitica()).append("\n");
+
+        sb.append("\nLa interfaz ya muestra la tabla de cada etapa y la política óptima. Guía al estudiante para que:\n");
+        sb.append("  1. IDENTIFIQUE los tres ingredientes del modelo en SU problema: qué es una etapa, qué información "
+                + "resume el estado y qué se decide. Sin eso la recurrencia no significa nada.\n");
+        sb.append("  2. Explique el PRINCIPIO DE OPTIMALIDAD con sus palabras: sea cual sea el estado con el que se "
+                + "llega a una etapa, lo que queda por decidir debe ser óptimo para ese subproblema. Por eso se puede "
+                + "resolver hacia atrás y reutilizar el valor ya calculado de la etapa siguiente.\n");
+        sb.append("  3. Recorra una fila de la tabla a mano: verifique que el valor óptimo del estado es el mejor "
+                + "entre contribución inmediata + valor futuro, y no solo la mejor contribución inmediata "
+                + "(la decisión miope suele no ser la óptima).\n");
+        switch (modelo.metodo()) {
+            case ASIGNACION_RECURSOS -> sb.append("  4. INTERPRETE el reparto: por qué a la actividad con mayor "
+                    + "retorno unitario no siempre le toca todo el recurso.\n");
+            case MOCHILA -> sb.append("  4. INTERPRETE la selección: el criterio no es el artículo más valioso ni "
+                    + "el más ligero, sino el mejor uso de la capacidad como un todo.\n");
+            case RUTA_ETAPAS -> sb.append("  4. Note que cualquier tramo de la ruta óptima es a su vez la ruta óptima "
+                    + "entre sus extremos: eso es el principio de optimalidad hecho visible.\n");
+            case PLANIFICACION_PRODUCCION -> sb.append("  4. Evalúe el trade-off: agrupar la producción en pocos lotes "
+                    + "ahorra preparaciones pero obliga a mantener inventario; producir cada periodo evita el "
+                    + "inventario pero paga la preparación cada vez.\n");
+            case REEMPLAZO_EQUIPOS -> sb.append("  4. Entienda que reemplazar no depende solo del costo de operación "
+                    + "del año: pesa el valor de rescate que se recupera hoy contra los ingresos netos que el equipo "
+                    + "todavía puede dar.\n");
+        }
 
         return sb.toString();
     }

@@ -1,5 +1,6 @@
 package jpap.dev.io_api.infrastructure.ai.hitl;
 
+import jpap.dev.io_api.application.dinamica.DinamicaService;
 import jpap.dev.io_api.application.entera.EnteraService;
 import jpap.dev.io_api.application.inventario.InventarioService;
 import jpap.dev.io_api.application.lp.DosFasesService;
@@ -9,6 +10,9 @@ import jpap.dev.io_api.application.lp.SimplexService;
 import jpap.dev.io_api.application.redes.RedService;
 import jpap.dev.io_api.application.transporte.TransporteService;
 import jpap.dev.io_api.domain.common.SolveStatus;
+import jpap.dev.io_api.domain.dinamica.ArticuloMochila;
+import jpap.dev.io_api.domain.dinamica.MetodoDinamico;
+import jpap.dev.io_api.domain.dinamica.ModeloDinamico;
 import jpap.dev.io_api.domain.entera.ModeloEntero;
 import jpap.dev.io_api.domain.entera.TipoVariable;
 import jpap.dev.io_api.domain.inventario.MetodoInventario;
@@ -59,7 +63,7 @@ class ResolucionAprobadaWorkflowTest {
         ResolucionEjecutor ejecutor = new ResolucionEjecutor(
                 new SimplexService(), new GranMService(), new DosFasesService(),
                 new GraficoService(), new TransporteService(), new RedService(),
-                new EnteraService(), new InventarioService());
+                new EnteraService(), new InventarioService(), new DinamicaService());
         ResolucionAprobadaWorkflow workflow = new HitlConfig().resolucionAprobadaWorkflow(ejecutor, registry);
         executor = Executors.newVirtualThreadPerTaskExecutor();
         service = new AprobacionHumanaService(workflow, registry, executor);
@@ -225,10 +229,40 @@ class ResolucionAprobadaWorkflowTest {
         assertNull(desenlace.ejecucion().resultadoTransporte());
         assertNull(desenlace.ejecucion().resultadoRed());
         assertNull(desenlace.ejecucion().resultadoEntero());
+        assertNull(desenlace.ejecucion().resultadoDinamica());
         assertNotNull(desenlace.ejecucion().resultadoInventario());
         assertEquals(SolveStatus.OPTIMO, desenlace.ejecucion().resultadoInventario().status());
         assertEquals(158.113883, desenlace.ejecucion().resultadoInventario().solution().cantidadOptima(), 1e-4);
         assertTrue(desenlace.resumenParaTutor().contains("Inventario"));
+    }
+
+    /** Mochila 0/1 con capacidad 5: A(2,3), B(3,4), C(4,5) → optimo 7 llevando A y B. */
+    @Test
+    void aprobarConMetodoProgramacionDinamicaDevuelveResultadoDinamica() {
+        ModeloDinamico modelo = ModeloDinamico.builder()
+                .metodo(MetodoDinamico.MOCHILA)
+                .capacidad(5)
+                .articulos(List.of(
+                        new ArticuloMochila("A", 2, 3.0, null),
+                        new ArticuloMochila("B", 3, 4.0, null),
+                        new ArticuloMochila("C", 4, 5.0, null)))
+                .build();
+
+        SolicitudAprobacion solicitud = service.solicitar("sesion-pd", modelo,
+                MetodoResolucion.PROGRAMACION_DINAMICA);
+        var desenlace = service.decidir(solicitud.solicitudId(), true, null);
+
+        assertNull(desenlace.ejecucion().resultado(), "PD no produce resultado tabular LP");
+        assertNull(desenlace.ejecucion().resultadoGrafico());
+        assertNull(desenlace.ejecucion().resultadoTransporte());
+        assertNull(desenlace.ejecucion().resultadoRed());
+        assertNull(desenlace.ejecucion().resultadoEntero());
+        assertNull(desenlace.ejecucion().resultadoInventario());
+        assertNotNull(desenlace.ejecucion().resultadoDinamica());
+        assertEquals(SolveStatus.OPTIMO, desenlace.ejecucion().resultadoDinamica().status());
+        assertEquals(7.0, desenlace.ejecucion().resultadoDinamica().solution().valorOptimo(), 1e-6);
+        assertTrue(desenlace.resumenParaTutor().contains("Programación Dinámica"));
+        assertTrue(desenlace.resumenParaTutor().contains("PRINCIPIO DE OPTIMALIDAD"));
     }
 
     @Test
