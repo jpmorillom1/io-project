@@ -80,17 +80,30 @@ public class TransporteTool {
             @P("Demanda de cada destino, en el mismo orden que 'destinos'")
             List<Double> demanda,
 
-            @P("Matriz de costos unitarios: una entrada por origen (en el orden de 'origenes'), cada una con la lista de costos hacia cada destino")
-            List<FilaCostos> costos,
+            @P("Lista PLANA de todos los costos unitarios de la matriz concatenados fila por fila. Ejemplo para 2 orígenes y 3 destinos: [15, 10, 12, 8, 14, 18]. IMPORTANTE: DEBE ser un arreglo plano 1D de números, NO un arreglo de arreglos [[...]] ni objetos.")
+            List<Double> costos,
 
-            @P("Método: MODI (óptimo, por defecto), ESQUINA_NOROESTE, COSTO_MINIMO o VOGEL")
+            @P(value = "Método: MODI (óptimo, por defecto), ESQUINA_NOROESTE, COSTO_MINIMO o VOGEL", required = false)
             MetodoTransporte metodo
     ) {
         MetodoTransporte metodoEfectivo = metodo != null ? metodo : MetodoTransporte.MODI;
         log.info("[TOOL] resolverTransporte — solicitud HITL, origenes={}, destinos={}, metodo={}",
-                origenes.size(), destinos.size(), metodoEfectivo);
+                origenes != null ? origenes.size() : 0, destinos != null ? destinos.size() : 0, metodoEfectivo);
 
-        List<List<Double>> matrizCostos = costos.stream().map(FilaCostos::costos).toList();
+        List<List<Double>> matrizCostos = new java.util.ArrayList<>();
+        int m = origenes != null ? origenes.size() : 0;
+        int n = destinos != null ? destinos.size() : 0;
+        if (costos != null && m > 0 && n > 0) {
+            for (int i = 0; i < m; i++) {
+                List<Double> fila = new java.util.ArrayList<>();
+                for (int j = 0; j < n; j++) {
+                    int idx = i * n + j;
+                    fila.add(idx < costos.size() ? costos.get(idx) : 0.0);
+                }
+                matrizCostos.add(fila);
+            }
+        }
+
         ModeloTransporte modelo = new ModeloTransporte(
                 origenes, destinos, oferta, demanda, matrizCostos, metodoEfectivo);
 

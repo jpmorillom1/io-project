@@ -1,8 +1,11 @@
 package jpap.dev.io_api.infrastructure.ai.hitl;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jpap.dev.io_api.domain.common.ModeloResoluble;
 import jpap.dev.io_api.infrastructure.ai.dto.SolicitudAprobacion;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -39,6 +42,7 @@ public class AprobacionHumanaService {
     private final ResolucionAprobadaWorkflow workflow;
     private final SolicitudAprobacionRegistry registry;
     private final ExecutorService hitlExecutor;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public AprobacionHumanaService(ResolucionAprobadaWorkflow workflow,
                                    SolicitudAprobacionRegistry registry,
@@ -83,9 +87,30 @@ public class AprobacionHumanaService {
      * del workflow (si aprobó, incluye el resultado del solver).
      */
     public Desenlace decidir(String solicitudId, boolean aprobado, String comentario) {
+        return decidir(solicitudId, aprobado, comentario, null);
+    }
+
+    /**
+     * Completa la compuerta HITL con la decisión del estudiante y espera el desenlace
+     * del workflow (si aprobó, incluye el resultado del solver). Si viene un modeloModificado
+     * desde la UI, reemplaza el modelo guardado en la solicitud para asegurar 100% concordancia.
+     */
+    public Desenlace decidir(String solicitudId, boolean aprobado, String comentario, JsonNode modeloModificado) {
         SolicitudAprobacionRegistry.Solicitud solicitud = registry.obtener(solicitudId)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "No existe una solicitud de aprobación pendiente con id " + solicitudId));
+
+        if (aprobado && modeloModificado != null && !modeloModificado.isNull()) {
+            try {
+                Class<? extends ModeloResoluble> claseModelo = MetodoResolucion.claseModeloPorMetodo(solicitud.metodo());
+                ModeloResoluble nuevoModelo = objectMapper.treeToValue(modeloModificado, claseModelo);
+                solicitud.actualizarModelo(nuevoModelo);
+                log.info("[HITL] Modelo de solicitud {} sustituido por modeloModificado de UI ({})",
+                        solicitudId, claseModelo.getSimpleName());
+            } catch (Exception e) {
+                log.warn("[HITL] No se pudo deserializar modeloModificado para {}: {}", solicitud.metodo(), e.getMessage());
+            }
+        }
 
         try {
             // Equivalente a scope.completePendingResponse(solicitudId, decision):

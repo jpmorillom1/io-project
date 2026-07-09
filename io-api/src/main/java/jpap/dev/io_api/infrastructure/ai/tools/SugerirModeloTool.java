@@ -42,11 +42,11 @@ public class SugerirModeloTool {
 
     @Tool("""
             Registra el modelo LP sugerido para que la interfaz lo muestre al estudiante.
-            INVOCA esto cuando hayas identificado suficiente información del enunciado para
-            formular el modelo completo (variables, función objetivo y restricciones).
-            La UI pre-llenará el formulario con este modelo — el estudiante puede revisarlo
-            y modificarlo antes de validar o resolver.
-            También úsalo si necesitas proponer un modelo CORREGIDO después de validar.
+            SOLO PARA PROGRAMACIÓN LINEAL (LP: Simplex, Gran M, Dos Fases, Gráfico, Entera).
+            PROHIBIDO invocar esta herramienta para problemas de Inventarios, Transporte, Redes o Programación Dinámica.
+            INVOCA esto cuando el problema sea de Programación Lineal y tengas suficiente información para
+            formular el modelo LP completo (variables, función objetivo y restricciones).
+            La UI pre-llenará el formulario con este modelo LP.
             """)
     public String registrarModeloSugerido(
             @P("Nombres de las variables de decisión, ej: [\"x1\", \"x2\"]")

@@ -230,23 +230,19 @@ public class DinamicaTool {
     }
 
     @Tool("""
-            Solicita resolver por PROGRAMACIÓN DINÁMICA un problema de PLANIFICACIÓN DE PRODUCCIÓN
-            (equivalente a planificación de inventarios por etapas): decidir cuánto producir en cada
-            periodo para cubrir una demanda conocida al mínimo costo total, sin permitir faltantes.
-            INVOCA ESTA HERRAMIENTA cuando se cumplan TODAS estas condiciones:
-              1) Haya una demanda conocida POR PERIODO (una lista, no un valor anual único).
-              2) Haya un costo fijo de preparación por lote, un costo unitario de producción y un costo
-                 de mantener inventario de un periodo al siguiente.
-              3) El modelo esté completamente validado por el estudiante.
-              4) El estudiante haya pedido resolver explícitamente.
-            Si la demanda es CONSTANTE y solo se pide la cantidad económica de pedido, usa las
-            herramientas de INVENTARIO (EOQ), NO esta.
+            Solicita resolver por PROGRAMACIÓN DINÁMICA un problema de PLANIFICACIÓN DE PRODUCCIÓN / INVENTARIO POR PERÍODOS:
+            decidir cuánto producir en cada periodo para cubrir una demanda dinámica conocida al mínimo costo total.
+            USA SIEMPRE ESTA HERRAMIENTA cuando:
+              1) El problema proporcione una LISTA o secuencia de demandas por periodo/mes (ej. [3, 2, 4]).
+              2) Se mencionen costos de preparación de lote, producción y mantenimiento de inventario por periodo.
+              3) El enunciado solicite resolver por Programación Dinámica.
+            IMPORTANTE: JAMÁS llames a resolverInventario cuando la demanda sea una lista por periodos; resolverInventario es solo para demanda escalar constante.
             Incluye SOLO los parámetros opcionales que el enunciado menciona y OMITE los demás.
             EFECTO: NO resuelve inmediatamente — envía una solicitud de aprobación a la interfaz;
             el estudiante debe confirmar con el botón Aprobar antes de que el solver se ejecute.
             """)
     public String resolverPdPlanificacionProduccion(
-            @P("Demanda de cada periodo, en orden: el primer valor es la demanda del periodo 1")
+            @P("Lista de demandas para cada periodo/mes en orden, ej: [3, 2, 4]")
             List<Integer> demandas,
 
             @P("Costo fijo de preparar un lote (K); se paga una vez por periodo en que se produce algo")

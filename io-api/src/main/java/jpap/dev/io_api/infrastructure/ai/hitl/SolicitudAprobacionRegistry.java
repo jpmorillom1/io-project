@@ -30,7 +30,7 @@ public class SolicitudAprobacionRegistry {
     public static final class Solicitud {
         private final String solicitudId;
         private final String sesionId;
-        private final ModeloResoluble modelo;
+        private volatile ModeloResoluble modelo;
         private final MetodoResolucion metodo;
         private final Instant creadaEn = Instant.now();
 
@@ -54,6 +54,8 @@ public class SolicitudAprobacionRegistry {
         public PendingResponse<DecisionAprobacion> pendiente() { return pendiente; }
         public CompletableFuture<String> ejecucion() { return ejecucion; }
         public ResolucionEjecutor.Ejecucion resultado() { return resultado; }
+
+        public void actualizarModelo(ModeloResoluble nuevoModelo) { this.modelo = nuevoModelo; }
 
         void adjuntarEjecucion(CompletableFuture<String> ejecucion) { this.ejecucion = ejecucion; }
         void registrarResultado(ResolucionEjecutor.Ejecucion resultado) { this.resultado = resultado; }

@@ -75,7 +75,8 @@ public class HitlConfig {
                 return;
             }
 
-            ModeloResoluble modelo = (ModeloResoluble) scope.readState("modelo");
+            SolicitudAprobacionRegistry.Solicitud solicitud = registry.obtener(solicitudId).orElse(null);
+            ModeloResoluble modelo = solicitud != null ? solicitud.modelo() : (ModeloResoluble) scope.readState("modelo");
             MetodoResolucion metodo = (MetodoResolucion) scope.readState("metodo");
             try {
                 ResolucionEjecutor.Ejecucion ejecucion = ejecutor.ejecutar(modelo, metodo);

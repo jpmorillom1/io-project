@@ -287,4 +287,29 @@ class ResolucionAprobadaWorkflowTest {
         assertThrows(IllegalArgumentException.class,
                 () -> service.decidir("no-existe", true, null));
     }
+
+    @Test
+    void aprobacionConModeloModificadoSobrescribeYResuelveNuevoModelo() {
+        // Modelo original: max 3x1 + 2x2 s.a. x1 <= 4, x2 <= 6 (Z opt = 24)
+        ModeloLP original = modeloClasico();
+        SolicitudAprobacion solicitud = service.solicitar("sesion-mod", original, MetodoResolucion.SIMPLEX);
+
+        // Modelo modificado en la UI: max 10x1 + 10x2 s.a. x1 <= 1, x2 <= 1 (Z opt = 20)
+        ModeloLP modificado = new ModeloLP(
+                List.of("x1", "x2"),
+                new FuncionObjetivo(List.of(10.0, 10.0), TipoObjetivo.MAXIMIZAR),
+                List.of(
+                        new Restriccion(List.of(1.0, 0.0), TipoRestriccion.LEQ, 1.0),
+                        new Restriccion(List.of(0.0, 1.0), TipoRestriccion.LEQ, 1.0)
+                )
+        );
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        com.fasterxml.jackson.databind.JsonNode modificadoNode = mapper.valueToTree(modificado);
+
+        var desenlace = service.decidir(solicitud.solicitudId(), true, "Aprobado con modelo modificado en UI", modificadoNode);
+
+        assertNotNull(desenlace.ejecucion());
+        assertEquals(SolveStatus.OPTIMO, desenlace.ejecucion().resultado().status());
+        assertEquals(20.0, desenlace.ejecucion().resultado().solution().valorOptimo(), 1e-6);
+    }
 }

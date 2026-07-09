@@ -38,7 +38,7 @@ spring:
 langchain4j:
   open-ai:
     chat-model:
-      api-key: ${GROQ_API_KEY}
+      api-key: ${GROQ_API_KEY:demo}
       base-url: https://api.groq.com/openai/v1
       model-name: ${GROQ_MODEL_NAME:llama-3.3-70b-versatile}
       temperature: 0.

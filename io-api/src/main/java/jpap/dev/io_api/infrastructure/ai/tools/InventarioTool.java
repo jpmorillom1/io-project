@@ -64,16 +64,19 @@ public class InventarioTool {
                 golpe. Requiere ADEMÁS 'tasaProduccion' (P, unidades/año, debe ser mayor que la demanda).
               - PUNTO_REORDEN → además de cuánto pedir, calcula CUÁNDO pedir. Requiere ADEMÁS
                 'leadTimeDias' (tiempo de entrega en días) y opcionalmente 'diasHabiles' (default 360).
+            REGLA CRÍTICA DE ELECCIÓN:
+            - ESTA HERRAMIENTA ES SOLO PARA DEMANDA CONSTANTE ESTÁTICA (un único número escalar, ej. D = 1000).
+            - SI EL PROBLEMA TIENE DEMANDAS DINÁMICAS O MÚLTIPLES POR PERIODO (ejemplo: lista [3, 2, 4] por meses) O PIDA PROGRAMACIÓN DINÁMICA -> ESTÁ PROHIBIDO USAR resolverInventario. DEBES USAR resolverPdPlanificacionProduccion.
             IMPORTANTE: incluye SOLO los parámetros opcionales que el método usa y OMITE los demás —
             nunca envíes un campo con valor null.
             EFECTO: NO resuelve inmediatamente — envía una solicitud de aprobación a la interfaz;
             el estudiante debe confirmar con el botón Aprobar antes de que el solver se ejecute.
             """)
     public String resolverInventario(
-            @P("Modelo: EOQ_BASICO, EOQ_FALTANTES, PRODUCCION_ECONOMICA o PUNTO_REORDEN")
+            @P(value = "Modelo: EOQ_BASICO (por defecto), EOQ_FALTANTES, PRODUCCION_ECONOMICA o PUNTO_REORDEN", required = false)
             MetodoInventario metodo,
 
-            @P("Demanda conocida por periodo (normalmente anual), en unidades")
+            @P("Demanda total constante (un ÚNICO número escalar, ej: 1000). SI TIENES UNA LISTA DE DEMANDAS POR PERIODO (ej: [3, 2, 4]), NO USES ESTA HERRAMIENTA, usa resolverPdPlanificacionProduccion.")
             double demanda,
 
             @P("Costo de ordenar o preparar un pedido (K), en dinero por pedido")
@@ -82,31 +85,33 @@ public class InventarioTool {
             @P("Costo de mantener una unidad en inventario por periodo (H)")
             double costoMantener,
 
-            @P(value = "Costo de faltante por unidad y periodo (b) — SOLO para EOQ_FALTANTES; en los demás OMITE este campo (nunca null)", required = false)
+            @P(value = "Costo de faltante por unidad y periodo (b) — SOLO para EOQ_FALTANTES; en los demás pon 0 (JAMÁS envíes null)", required = false)
             Double costoFaltante,
 
-            @P(value = "Tasa de producción P en unidades/año, debe ser mayor que la demanda — SOLO para PRODUCCION_ECONOMICA; en los demás OMITE este campo (nunca null)", required = false)
+            @P(value = "Tasa de producción P en unidades/año, debe ser mayor que la demanda — SOLO para PRODUCCION_ECONOMICA; en los demás pon 0 (JAMÁS envíes null)", required = false)
             Double tasaProduccion,
 
-            @P(value = "Tiempo de entrega (lead time) en días — SOLO para PUNTO_REORDEN; en los demás OMITE este campo (nunca null)", required = false)
+            @P(value = "Tiempo de entrega (lead time) en días — SOLO para PUNTO_REORDEN; en los demás pon 0 (JAMÁS envíes null)", required = false)
             Double leadTimeDias,
 
-            @P(value = "Días hábiles al año para el punto de reorden (default 360 si se omite) — SOLO para PUNTO_REORDEN; en los demás OMITE este campo (nunca null)", required = false)
+            @P(value = "Días hábiles al año para el punto de reorden (default 360 si se omite) — en los demás pon 360 (JAMÁS envíes null)", required = false)
             Integer diasHabiles
     ) {
-        if (metodo == null) {
-            return "ERROR: falta el parámetro 'metodo'. Indica EOQ_BASICO, EOQ_FALTANTES, "
-                    + "PRODUCCION_ECONOMICA o PUNTO_REORDEN (para descuentos usa resolverInventarioDescuentos).";
-        }
-        if (metodo == MetodoInventario.EOQ_DESCUENTOS) {
+        MetodoInventario metodoEfectivo = metodo != null ? metodo : MetodoInventario.EOQ_BASICO;
+        if (metodoEfectivo == MetodoInventario.EOQ_DESCUENTOS) {
             return "ERROR: para EOQ con descuentos por cantidad usa la herramienta "
                     + "resolverInventarioDescuentos con la tabla de precios por tramo.";
         }
         log.info("[TOOL] resolverInventario — solicitud HITL, metodo={}, D={}, K={}, H={}",
-                metodo, demanda, costoOrden, costoMantener);
+                metodoEfectivo, demanda, costoOrden, costoMantener);
 
-        ModeloInventario modelo = new ModeloInventario(metodo, demanda, costoOrden, costoMantener,
-                costoFaltante, tasaProduccion, leadTimeDias, diasHabiles, null, null);
+        Double costoFaltanteEfectivo = (costoFaltante != null && costoFaltante > 0) ? costoFaltante : null;
+        Double tasaProduccionEfectiva = (tasaProduccion != null && tasaProduccion > 0) ? tasaProduccion : null;
+        Double leadTimeDiasEfectivo = (leadTimeDias != null && leadTimeDias > 0) ? leadTimeDias : null;
+        Integer diasHabilesEfectivo = (diasHabiles != null && diasHabiles > 0) ? diasHabiles : null;
+
+        ModeloInventario modelo = new ModeloInventario(metodoEfectivo, demanda, costoOrden, costoMantener,
+                costoFaltanteEfectivo, tasaProduccionEfectiva, leadTimeDiasEfectivo, diasHabilesEfectivo, null, null);
 
         return SolicitudAprobacionHelper.solicitar(
                 aprobacionService, contextStore, modelo, MetodoResolucion.INVENTARIO);
@@ -122,13 +127,14 @@ public class InventarioTool {
               3) El estudiante haya pedido resolver explícitamente.
             COSTO DE MANTENER: indica UNO de los dos:
               - 'tasaMantenerPorcentaje' (i) si el costo de mantener es una fracción del precio (ej. 0.2 = 20%),
-                lo habitual cuando el enunciado dice "el costo de mantener es el 20% del precio". OMITE 'costoMantener'.
-              - 'costoMantener' (H) si es un valor fijo por unidad-año independiente del precio. OMITE 'tasaMantenerPorcentaje'.
+                lo habitual cuando el enunciado dice "el costo de mantener es el 20% del precio". Pon 'costoMantener' en 0.
+              - 'costoMantener' (H) si es un valor fijo por unidad-año independiente del precio. Pon 'tasaMantenerPorcentaje' en 0.
+            JAMÁS pases valor null a un parámetro numérico; si no se usa pon 0.
             EFECTO: NO resuelve inmediatamente — envía una solicitud de aprobación a la interfaz;
             el estudiante debe confirmar con el botón Aprobar antes de que el solver se ejecute.
             """)
     public String resolverInventarioDescuentos(
-            @P("Demanda conocida por periodo (normalmente anual), en unidades")
+            @P("Demanda total constante (un ÚNICO número escalar, ej: 1000). SI EL ENUNCIADO TIENE DEMANDAS DINÁMICAS POR PERIODO, usa resolverPdPlanificacionProduccion.")
             double demanda,
 
             @P("Costo de ordenar o preparar un pedido (K), en dinero por pedido")
@@ -137,10 +143,10 @@ public class InventarioTool {
             @P("Tabla de descuentos: un tramo por nivel de precio, cada uno con 'cantidadMinima' y 'precioUnitario'")
             List<TramoInput> tramos,
 
-            @P(value = "Tasa de mantener como fracción del precio (ej. 0.2 = 20% del precio). Úsala si el costo de mantener depende del precio; si no, OMÍTELA (nunca null)", required = false)
+            @P(value = "Tasa de mantener como fracción del precio (ej. 0.2 = 20% del precio). Si usas costoMantener fijo pon 0 (JAMÁS envíes null)", required = false)
             Double tasaMantenerPorcentaje,
 
-            @P(value = "Costo de mantener fijo por unidad-año (H), independiente del precio. Úsalo si no hay tasa porcentual; si no, OMÍTELO (nunca null)", required = false)
+            @P(value = "Costo de mantener fijo por unidad-año (H), independiente del precio. Si usas tasa porcentual pon 0 (JAMÁS envíes null)", required = false)
             Double costoMantener
     ) {
         log.info("[TOOL] resolverInventarioDescuentos — solicitud HITL, D={}, K={}, tramos={}",
@@ -149,8 +155,12 @@ public class InventarioTool {
         List<TramoDescuento> lista = tramos == null ? List.of() : tramos.stream()
                 .map(t -> new TramoDescuento(t.cantidadMinima(), t.precioUnitario()))
                 .toList();
+
+        Double tasaEfectiva = (tasaMantenerPorcentaje != null && tasaMantenerPorcentaje > 0) ? tasaMantenerPorcentaje : null;
+        Double costoEfectivo = (costoMantener != null && costoMantener > 0) ? costoMantener : null;
+
         ModeloInventario modelo = new ModeloInventario(MetodoInventario.EOQ_DESCUENTOS, demanda,
-                costoOrden, costoMantener, null, null, null, null, tasaMantenerPorcentaje, lista);
+                costoOrden, costoEfectivo, null, null, null, null, tasaEfectiva, lista);
 
         return SolicitudAprobacionHelper.solicitar(
                 aprobacionService, contextStore, modelo, MetodoResolucion.INVENTARIO);

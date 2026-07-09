@@ -5,17 +5,9 @@ import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.rag.content.retriever.ContentRetriever;
 import dev.langchain4j.service.AiServices;
 import dev.langchain4j.service.tool.ToolErrorHandlerResult;
-import jpap.dev.io_api.infrastructure.ai.tools.DinamicaTool;
-import jpap.dev.io_api.infrastructure.ai.tools.DosFasesTool;
-import jpap.dev.io_api.infrastructure.ai.tools.EnteraTool;
-import jpap.dev.io_api.infrastructure.ai.tools.GraficoTool;
-import jpap.dev.io_api.infrastructure.ai.tools.GranMTool;
-import jpap.dev.io_api.infrastructure.ai.tools.InventarioTool;
-import jpap.dev.io_api.infrastructure.ai.tools.RedTool;
-import jpap.dev.io_api.infrastructure.ai.tools.SimplexTool;
-import jpap.dev.io_api.infrastructure.ai.tools.SugerirModeloTool;
-import jpap.dev.io_api.infrastructure.ai.tools.TransporteTool;
-import jpap.dev.io_api.infrastructure.ai.tools.ValidarModeloTool;
+import jpap.dev.io_api.infrastructure.ai.subagents.*;
+import jpap.dev.io_api.infrastructure.ai.supervisor.ModuloClassifierService;
+import jpap.dev.io_api.infrastructure.ai.tools.*;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.Resource;
@@ -33,11 +25,123 @@ public class AiConfig {
         this.resourceLoader = resourceLoader;
     }
 
+    @Bean
+    public PlSubAgent plSubAgent(ChatModel chatModel,
+                                 SimplexTool simplexTool,
+                                 SugerirModeloTool sugerirTool,
+                                 ValidarModeloTool validarTool,
+                                 GranMTool granMTool,
+                                 DosFasesTool dosFasesTool,
+                                 GraficoTool graficoTool,
+                                 ContentRetriever contentRetriever) throws IOException {
+        String systemPrompt = cargarPrompt("classpath:prompts/subagents/pl_system_prompt.txt");
+        return AiServices.builder(PlSubAgent.class)
+                .chatModel(new RetryingChatModel(chatModel))
+                .chatMemoryProvider(memId -> MessageWindowChatMemory.withMaxMessages(14))
+                .tools(simplexTool, sugerirTool, validarTool, granMTool, dosFasesTool, graficoTool)
+                .maxSequentialToolsInvocations(6)
+                .toolArgumentsErrorHandler((error, context) -> ToolErrorHandlerResult.text(
+                        "ERROR: los argumentos de la herramienta no cumplen su esquema: "
+                                + error.getMessage() + " — corrige la llamada usando SOLO los campos del esquema."))
+                .systemMessageProvider(memId -> systemPrompt)
+                .contentRetriever(contentRetriever)
+                .build();
+    }
+
+    @Bean
+    public InventarioSubAgent inventarioSubAgent(ChatModel chatModel,
+                                                 InventarioTool inventarioTool,
+                                                 ContentRetriever contentRetriever) throws IOException {
+        String systemPrompt = cargarPrompt("classpath:prompts/subagents/inventario_system_prompt.txt");
+        return AiServices.builder(InventarioSubAgent.class)
+                .chatModel(new RetryingChatModel(chatModel))
+                .chatMemoryProvider(memId -> MessageWindowChatMemory.withMaxMessages(14))
+                .tools(inventarioTool)
+                .maxSequentialToolsInvocations(4)
+                .toolArgumentsErrorHandler((error, context) -> ToolErrorHandlerResult.text(
+                        "ERROR: los argumentos de la herramienta no cumplen su esquema: "
+                                + error.getMessage() + " — corrige la llamada usando SOLO los campos del esquema."))
+                .systemMessageProvider(memId -> systemPrompt)
+                .contentRetriever(contentRetriever)
+                .build();
+    }
+
+    @Bean
+    public TransporteSubAgent transporteSubAgent(ChatModel chatModel,
+                                                 TransporteTool transporteTool,
+                                                 ContentRetriever contentRetriever) throws IOException {
+        String systemPrompt = cargarPrompt("classpath:prompts/subagents/transporte_system_prompt.txt");
+        return AiServices.builder(TransporteSubAgent.class)
+                .chatModel(new RetryingChatModel(chatModel))
+                .chatMemoryProvider(memId -> MessageWindowChatMemory.withMaxMessages(14))
+                .tools(transporteTool)
+                .maxSequentialToolsInvocations(4)
+                .toolArgumentsErrorHandler((error, context) -> ToolErrorHandlerResult.text(
+                        "ERROR: los argumentos de la herramienta no cumplen su esquema: "
+                                + error.getMessage() + " — corrige la llamada usando SOLO los campos del esquema."))
+                .systemMessageProvider(memId -> systemPrompt)
+                .contentRetriever(contentRetriever)
+                .build();
+    }
+
+    @Bean
+    public RedesSubAgent redesSubAgent(ChatModel chatModel,
+                                       RedTool redTool,
+                                       ContentRetriever contentRetriever) throws IOException {
+        String systemPrompt = cargarPrompt("classpath:prompts/subagents/redes_system_prompt.txt");
+        return AiServices.builder(RedesSubAgent.class)
+                .chatModel(new RetryingChatModel(chatModel))
+                .chatMemoryProvider(memId -> MessageWindowChatMemory.withMaxMessages(14))
+                .tools(redTool)
+                .maxSequentialToolsInvocations(4)
+                .toolArgumentsErrorHandler((error, context) -> ToolErrorHandlerResult.text(
+                        "ERROR: los argumentos de la herramienta no cumplen su esquema: "
+                                + error.getMessage() + " — corrige la llamada usando SOLO los campos del esquema."))
+                .systemMessageProvider(memId -> systemPrompt)
+                .contentRetriever(contentRetriever)
+                .build();
+    }
+
+    @Bean
+    public EnteraSubAgent enteraSubAgent(ChatModel chatModel,
+                                         EnteraTool enteraTool,
+                                         SugerirModeloTool sugerirTool,
+                                         ValidarModeloTool validarTool,
+                                         ContentRetriever contentRetriever) throws IOException {
+        String systemPrompt = cargarPrompt("classpath:prompts/subagents/entera_system_prompt.txt");
+        return AiServices.builder(EnteraSubAgent.class)
+                .chatModel(new RetryingChatModel(chatModel))
+                .chatMemoryProvider(memId -> MessageWindowChatMemory.withMaxMessages(14))
+                .tools(enteraTool, sugerirTool, validarTool)
+                .maxSequentialToolsInvocations(5)
+                .toolArgumentsErrorHandler((error, context) -> ToolErrorHandlerResult.text(
+                        "ERROR: los argumentos de la herramienta no cumplen su esquema: "
+                                + error.getMessage() + " — corrige la llamada usando SOLO los campos del esquema."))
+                .systemMessageProvider(memId -> systemPrompt)
+                .contentRetriever(contentRetriever)
+                .build();
+    }
+
+    @Bean
+    public DinamicaSubAgent dinamicaSubAgent(ChatModel chatModel,
+                                             DinamicaTool dinamicaTool,
+                                             ContentRetriever contentRetriever) throws IOException {
+        String systemPrompt = cargarPrompt("classpath:prompts/subagents/dinamica_system_prompt.txt");
+        return AiServices.builder(DinamicaSubAgent.class)
+                .chatModel(new RetryingChatModel(chatModel))
+                .chatMemoryProvider(memId -> MessageWindowChatMemory.withMaxMessages(14))
+                .tools(dinamicaTool)
+                .maxSequentialToolsInvocations(4)
+                .toolArgumentsErrorHandler((error, context) -> ToolErrorHandlerResult.text(
+                        "ERROR: los argumentos de la herramienta no cumplen su esquema: "
+                                + error.getMessage() + " — corrige la llamada usando SOLO los campos del esquema."))
+                .systemMessageProvider(memId -> systemPrompt)
+                .contentRetriever(contentRetriever)
+                .build();
+    }
+
     /**
-     * Tutor socrático conversacional.
-     * - Memoria por sesión (hasta 30 mensajes)
-     * - System prompt cargado desde fichero (fácil de editar sin recompilar)
-     * - Tools registradas: el LLM actualiza la UI vía ChatContextStore
+     * Tutor monolítico heredado (compatibilidad retroactiva).
      */
     @Bean
     public TutorAiService tutorAiService(ChatModel chatModel,
@@ -57,28 +161,24 @@ public class AiConfig {
         String systemPrompt = cargarPrompt("classpath:prompts/tutor_system_prompt.txt");
         return AiServices.builder(TutorAiService.class)
                 .chatModel(new RetryingChatModel(chatModel))
-                .chatMemoryProvider(memId -> MessageWindowChatMemory.withMaxMessages(30))
+                .chatMemoryProvider(memId -> MessageWindowChatMemory.withMaxMessages(14))
                 .tools(simplexTool, sugerirTool, validarTool, granMTool, dosFasesTool, graficoTool, transporteTool, redTool, enteraTool, inventarioTool, dinamicaTool)
-                // Red de seguridad ante bucles de tool calls del LLM (llama repite la misma
-                // llamada a temperatura 0): al exceder el tope LangChain4j lanza y el
-                // controlador degrada con el mensaje amable. El caso normal usa 1-3 tools.
                 .maxSequentialToolsInvocations(6)
-                // Argumentos malformados del LLM (JSON que no casa con el record del @Tool):
-                // en vez de lanzar y tumbar el turno, el error vuelve al LLM como resultado
-                // de la tool para que corrija la llamada en el siguiente paso.
                 .toolArgumentsErrorHandler((error, context) -> ToolErrorHandlerResult.text(
                         "ERROR: los argumentos de la herramienta no cumplen su esquema: "
-                        + error.getMessage()
-                        + " — corrige la llamada usando SOLO los campos definidos en el esquema."))
+                                + error.getMessage() + " — corrige la llamada usando SOLO los campos del esquema."))
                 .systemMessageProvider(memId -> systemPrompt)
                 .contentRetriever(contentRetriever)
                 .build();
     }
 
-    /**
-     * Servicio sin memoria para extracción y validación estructurada de modelos.
-     * Usa los @SystemMessage definidos en los métodos de la interfaz.
-     */
+    @Bean
+    public ModuloClassifierService moduloClassifierService(ChatModel chatModel) {
+        return AiServices.builder(ModuloClassifierService.class)
+                .chatModel(new RetryingChatModel(chatModel))
+                .build();
+    }
+
     @Bean
     public ModeloAiService modeloAiService(ChatModel chatModel) {
         return AiServices.builder(ModeloAiService.class)

@@ -100,10 +100,10 @@ public class RedTool {
             @P("Aristas del grafo; en cada una llena solo los campos que el método necesita (peso, capacidad y/o costo)")
             List<AristaInput> aristas,
 
-            @P("true si el grafo es dirigido (arcos), false si no dirigido; KRUSKAL siempre lo trata como no dirigido")
+            @P(value = "true si el grafo es dirigido (arcos), false si no dirigido; KRUSKAL siempre lo trata como no dirigido", required = false)
             Boolean dirigido,
 
-            @P("Método: DIJKSTRA, KRUSKAL, EDMONDS_KARP o FLUJO_COSTO_MINIMO")
+            @P(value = "Método: DIJKSTRA (por defecto), KRUSKAL, EDMONDS_KARP o FLUJO_COSTO_MINIMO", required = false)
             MetodoRed metodo,
 
             @P(value = "Nodo fuente/origen — obligatorio salvo en KRUSKAL (en KRUSKAL omítelo)", required = false)
@@ -112,22 +112,20 @@ public class RedTool {
             @P(value = "Nodo sumidero/destino — obligatorio en EDMONDS_KARP y FLUJO_COSTO_MINIMO; en DIJKSTRA es el destino de la ruta; en KRUSKAL omítelo", required = false)
             String sumidero
     ) {
-        if (metodo == null) {
-            return "ERROR: falta el parámetro 'metodo'. Indica DIJKSTRA, KRUSKAL, EDMONDS_KARP "
-                    + "o FLUJO_COSTO_MINIMO (para asignación usa la herramienta resolverAsignacion).";
-        }
-        if (metodo == MetodoRed.ASIGNACION) {
+        MetodoRed metodoEfectivo = metodo != null ? metodo : MetodoRed.DIJKSTRA;
+        Boolean dirigidoEfectivo = dirigido != null ? dirigido : true;
+        if (metodoEfectivo == MetodoRed.ASIGNACION) {
             return "ERROR: para un problema de ASIGNACIÓN usa la herramienta resolverAsignacion "
                     + "con agentes, tareas y la matriz de costos.";
         }
         log.info("[TOOL] resolverRed — solicitud HITL, nodos={}, aristas={}, metodo={}",
-                nodos != null ? nodos.size() : 0, aristas != null ? aristas.size() : 0, metodo);
+                nodos != null ? nodos.size() : 0, aristas != null ? aristas.size() : 0, metodoEfectivo);
 
         List<Arista> lista = aristas == null ? List.of() : aristas.stream()
                 .map(a -> new Arista(a.origen(), a.destino(), a.peso(), a.capacidad(), a.costo()))
                 .toList();
-        boolean esDirigido = dirigido != null ? dirigido : metodo != MetodoRed.KRUSKAL;
-        ModeloRed modelo = new ModeloRed(nodos, lista, esDirigido, metodo, fuente, sumidero,
+        boolean esDirigido = dirigido != null ? dirigido : metodoEfectivo != MetodoRed.KRUSKAL;
+        ModeloRed modelo = new ModeloRed(nodos, lista, esDirigido, metodoEfectivo, fuente, sumidero,
                 null, null, null);
 
         return SolicitudAprobacionHelper.solicitar(
@@ -154,14 +152,26 @@ public class RedTool {
             @P("Nombres de las tareas (columnas de la matriz), ej: [\"Tarea A\", \"Tarea B\"]")
             List<String> tareas,
 
-            @P("Matriz de costos: una entrada por agente (en el orden de 'agentes'), cada una con la lista de costos hacia cada tarea")
-            List<FilaCostos> matrizCostos
+            @P("Lista PLANA de costos unitarios concatenados fila por fila (de cada agente hacia cada tarea). Ejemplo para 2 agentes y 2 tareas: [10, 15, 12, 8]. IMPORTANTE: DEBE ser un arreglo plano 1D de números, NO una matriz 2D [[...]] ni objetos.")
+            List<Double> matrizCostos
     ) {
         log.info("[TOOL] resolverAsignacion — solicitud HITL, agentes={}, tareas={}",
                 agentes != null ? agentes.size() : 0, tareas != null ? tareas.size() : 0);
 
-        List<List<Double>> matriz = matrizCostos == null ? List.of()
-                : matrizCostos.stream().map(FilaCostos::costos).toList();
+        List<List<Double>> matriz = new java.util.ArrayList<>();
+        int m = agentes != null ? agentes.size() : 0;
+        int n = tareas != null ? tareas.size() : 0;
+        if (matrizCostos != null && m > 0 && n > 0) {
+            for (int i = 0; i < m; i++) {
+                List<Double> fila = new java.util.ArrayList<>();
+                for (int j = 0; j < n; j++) {
+                    int idx = i * n + j;
+                    fila.add(idx < matrizCostos.size() ? matrizCostos.get(idx) : 0.0);
+                }
+                matriz.add(fila);
+            }
+        }
+
         ModeloRed modelo = new ModeloRed(null, null, true, MetodoRed.ASIGNACION, null, null,
                 agentes, tareas, matriz);
 

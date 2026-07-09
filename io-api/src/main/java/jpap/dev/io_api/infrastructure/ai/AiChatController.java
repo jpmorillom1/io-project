@@ -12,6 +12,7 @@ import jpap.dev.io_api.infrastructure.ai.dto.SugerirModeloRequest;
 import jpap.dev.io_api.infrastructure.ai.dto.ValidacionResponse;
 import jpap.dev.io_api.infrastructure.ai.dto.ValidarModeloRequest;
 import jpap.dev.io_api.infrastructure.ai.hitl.AprobacionHumanaService;
+import jpap.dev.io_api.infrastructure.ai.supervisor.TutorSupervisorService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -45,16 +46,16 @@ public class AiChatController {
             + "pero tuve un problema técnico al preparar la explicación. "
             + "Pídeme que te explique el resultado y lo retomamos.";
 
-    private final TutorAiService tutorAiService;
+    private final TutorSupervisorService tutorSupervisorService;
     private final ModeloAiService modeloAiService;
     private final ChatContextStore contextStore;
     private final AprobacionHumanaService aprobacionService;
 
-    public AiChatController(TutorAiService tutorAiService,
+    public AiChatController(TutorSupervisorService tutorSupervisorService,
                             ModeloAiService modeloAiService,
                             ChatContextStore contextStore,
                             AprobacionHumanaService aprobacionService) {
-        this.tutorAiService = tutorAiService;
+        this.tutorSupervisorService = tutorSupervisorService;
         this.modeloAiService = modeloAiService;
         this.contextStore = contextStore;
         this.aprobacionService = aprobacionService;
@@ -81,7 +82,7 @@ public class AiChatController {
 
         contextStore.iniciar(sesionId);
         try {
-            String respuesta = tutorAiService.chat(sesionId, request.mensaje());
+            String respuesta = tutorSupervisorService.chat(sesionId, request.mensaje());
             DatosRespuesta datos = contextStore.obtener();
 
             log.info("[AI/chat] tools invocadas — modelo={} validacion={} solicitud={} ",
@@ -134,13 +135,13 @@ public class AiChatController {
                 request.solicitudId(), request.aprobado());
 
         AprobacionHumanaService.Desenlace desenlace =
-                aprobacionService.decidir(request.solicitudId(), request.aprobado(), request.comentario());
+                aprobacionService.decidir(request.solicitudId(), request.aprobado(), request.comentario(), request.modeloModificado());
 
         // Reanudar la conversación: el tutor recibe el desenlace como mensaje de sistema
         contextStore.iniciar(desenlace.sesionId());
         var ejecucion = desenlace.ejecucion();
         try {
-            String respuesta = tutorAiService.chat(desenlace.sesionId(), mensajeDeDesenlace(desenlace));
+            String respuesta = tutorSupervisorService.chat(desenlace.sesionId(), mensajeDeDesenlace(desenlace));
             DatosRespuesta datos = contextStore.obtener();
 
             return ResponseEntity.ok(new ChatResponse(
