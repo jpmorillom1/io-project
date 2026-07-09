@@ -1,6 +1,11 @@
 import { type CSSProperties } from 'react'
+import { motion } from 'motion/react'
+import { revealRow, stagger } from '@/lib/motion'
 import { formatNum } from '@/lib/utils'
 import type { StepDatosTransporte } from '@/types/io'
+
+const ENTRA_SUAVE = 'inset 0 0 0 1px rgba(20,196,182,0.45)'
+const ENTRA_FUERTE = 'inset 0 0 0 2px rgba(20,196,182,0.95)'
 
 interface Props {
   datos: StepDatosTransporte
@@ -55,9 +60,9 @@ export function TransporteStepTable({ datos }: Props) {
             {tienePenal && <th style={{ ...th, color: 'var(--ij-cyan)' }}>pen.</th>}
           </tr>
         </thead>
-        <tbody>
+        <motion.tbody variants={stagger(0.04)} initial="hidden" animate="visible">
           {origenes.map((o, i) => (
-            <tr key={i}>
+            <motion.tr key={i} variants={revealRow}>
               <td style={{ ...td, textAlign: 'left', color: 'var(--ij-purple)' }}>
                 {o}
                 {tieneUV && (
@@ -73,13 +78,23 @@ export function TransporteStepTable({ datos }: Props) {
 
                 let bg: string | undefined
                 let boxShadow: string | undefined
-                if (entra) { bg = 'rgba(20,196,182,0.18)'; boxShadow = 'inset 0 0 0 1px rgba(20,196,182,0.45)' }
+                if (entra) { bg = 'rgba(20,196,182,0.18)'; boxShadow = ENTRA_SUAVE }
                 else if (sale) { bg = 'rgba(192,148,104,0.14)' }
                 else if (cic) { bg = 'rgba(20,196,182,0.06)' }
 
                 const usada = asignado != null && asignado > 0
                 return (
-                  <td key={j} style={{ ...td, background: bg, boxShadow }}>
+                  <motion.td
+                    key={j}
+                    style={{ ...td, background: bg, boxShadow }}
+                    // La celda entrante late una vez, ya asentada la tabla.
+                    animate={entra ? { boxShadow: [ENTRA_SUAVE, ENTRA_FUERTE, ENTRA_SUAVE] } : undefined}
+                    transition={
+                      entra
+                        ? { duration: 0.9, delay: 0.04 * origenes.length + 0.1, times: [0, 0.35, 1] }
+                        : undefined
+                    }
+                  >
                     <div style={{ fontSize: '10px', color: 'var(--ij-text-muted)' }}>c={formatNum(costos[i][j])}</div>
                     <div style={{ fontWeight: usada ? 700 : 400, color: usada ? 'var(--ij-cyan)' : 'var(--ij-text-muted)' }}>
                       {asignado != null ? formatNum(asignado) : '·'}
@@ -89,34 +104,34 @@ export function TransporteStepTable({ datos }: Props) {
                         Δ={formatNum(reducido)}
                       </div>
                     )}
-                  </td>
+                  </motion.td>
                 )
               })}
               <td style={{ ...td, fontWeight: 600, color: 'var(--ij-orange)' }}>{formatNum(oferta[i])}</td>
               {tienePenal && (
                 <td style={{ ...td, color: 'var(--ij-cyan)' }}>{penal(datos.penalizacionesFila, i)}</td>
               )}
-            </tr>
+            </motion.tr>
           ))}
-          <tr>
+          <motion.tr variants={revealRow}>
             <td style={{ ...td, textAlign: 'left', color: 'var(--ij-teal)' }}>demanda</td>
             {demanda.map((d, j) => (
               <td key={j} style={{ ...td, fontWeight: 600, color: 'var(--ij-teal)' }}>{formatNum(d)}</td>
             ))}
             <td style={td} />
             {tienePenal && <td style={td} />}
-          </tr>
+          </motion.tr>
           {tienePenal && (
-            <tr>
+            <motion.tr variants={revealRow}>
               <td style={{ ...td, textAlign: 'left', color: 'var(--ij-cyan)' }}>pen.</td>
               {destinos.map((_, j) => (
                 <td key={j} style={{ ...td, color: 'var(--ij-cyan)' }}>{penal(datos.penalizacionesColumna, j)}</td>
               ))}
               <td style={td} />
               <td style={td} />
-            </tr>
+            </motion.tr>
           )}
-        </tbody>
+        </motion.tbody>
       </table>
     </div>
   )

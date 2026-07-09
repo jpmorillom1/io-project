@@ -1,4 +1,6 @@
+import { motion } from 'motion/react'
 import { cn, formatNum } from '@/lib/utils'
+import { revealRow, stagger, T_BASE } from '@/lib/motion'
 import type { SolveStep, TableauHighlights } from '@/types/io'
 
 interface Props {
@@ -6,10 +8,17 @@ interface Props {
   highlights: TableauHighlights
 }
 
+const PIVOTE_SUAVE = 'inset 0 0 0 1px rgba(81,200,207,0.4)'
+const PIVOTE_FUERTE = 'inset 0 0 0 2px rgba(81,200,207,0.95)'
+
 export function TableauTable({ step, highlights }: Props) {
   const { encabezados, tableau, base } = step.datos
   const { columnaEntrada, filaSalida, celdaPivote } = highlights
   const m = tableau.length - 1
+
+  // El escalonado se reinicia en cada paso: `key` fuerza el remontaje del tbody.
+  const filas = tableau.length
+  const retardoPivote = 0.04 * filas + 0.1
 
   return (
     <div className="overflow-x-auto">
@@ -36,32 +45,42 @@ export function TableauTable({ step, highlights }: Props) {
             {encabezados.map((h, j) => {
               const isEntrada = columnaEntrada === j
               return (
-                <th
+                <motion.th
                   key={j}
                   className="px-3 py-2 text-center"
-                  style={{
+                  animate={{
                     color: isEntrada ? 'var(--ij-cyan)' : 'var(--ij-text-secondary)',
-                    background: isEntrada ? 'rgba(81,200,207,0.08)' : undefined,
+                    backgroundColor: isEntrada ? 'rgba(81,200,207,0.08)' : 'rgba(81,200,207,0)',
+                    borderBottomColor: isEntrada ? 'var(--ij-cyan)' : 'var(--ij-border)',
+                  }}
+                  transition={T_BASE}
+                  style={{
                     fontSize: '12px',
                     fontWeight: isEntrada ? 700 : 400,
-                    borderBottom: isEntrada
-                      ? '1px solid var(--ij-cyan)'
-                      : '1px solid var(--ij-border)',
+                    borderBottomWidth: '1px',
+                    borderBottomStyle: 'solid',
                   }}
                 >
                   {h}
-                </th>
+                </motion.th>
               )
             })}
           </tr>
         </thead>
-        <tbody>
+
+        <motion.tbody
+          key={step.numero}
+          variants={stagger(0.04)}
+          initial="hidden"
+          animate="visible"
+        >
           {tableau.map((fila, i) => {
             const isZRow = i === m
             const isFilaSalida = !isZRow && filaSalida === i
             return (
-              <tr
+              <motion.tr
                 key={i}
+                variants={revealRow}
                 style={{ background: isZRow ? 'var(--ij-bg-hover)' : undefined }}
               >
                 <td
@@ -84,13 +103,11 @@ export function TableauTable({ step, highlights }: Props) {
                   let color = isZRow ? 'var(--ij-text-secondary)' : 'var(--ij-cyan)'
                   let fontWeight: number | undefined
                   let fontStyle: string | undefined
-                  let boxShadow: string | undefined
 
                   if (isPivote) {
                     bg = 'rgba(81,200,207,0.18)'
                     color = 'var(--ij-cyan)'
                     fontWeight = 700
-                    boxShadow = 'inset 0 0 0 1px rgba(81,200,207,0.4)'
                   } else if (isFilaSalida) {
                     bg = 'rgba(192,148,104,0.08)'
                     color = 'var(--ij-orange)'
@@ -103,26 +120,36 @@ export function TableauTable({ step, highlights }: Props) {
                   }
 
                   return (
-                    <td
+                    <motion.td
                       key={j}
                       className="px-3 py-1.5 text-center tabular-nums"
+                      // El pivote late una vez, ya asentada la tabla: señala dónde giró el algoritmo.
+                      animate={
+                        isPivote
+                          ? { boxShadow: [PIVOTE_SUAVE, PIVOTE_FUERTE, PIVOTE_SUAVE] }
+                          : undefined
+                      }
+                      transition={
+                        isPivote
+                          ? { duration: 0.9, delay: retardoPivote, times: [0, 0.35, 1] }
+                          : undefined
+                      }
                       style={{
                         background: bg,
                         color,
                         fontWeight,
                         fontStyle,
-                        boxShadow,
                         borderBottom: '1px solid var(--ij-border)',
                       }}
                     >
                       {formatNum(val)}
-                    </td>
+                    </motion.td>
                   )
                 })}
-              </tr>
+              </motion.tr>
             )
           })}
-        </tbody>
+        </motion.tbody>
       </table>
     </div>
   )

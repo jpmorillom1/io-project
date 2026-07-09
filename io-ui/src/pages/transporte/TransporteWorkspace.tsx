@@ -3,6 +3,8 @@ import { ChatPanel } from '@/components/chat/ChatPanel'
 import { TransporteModelEditor } from '@/components/transporte/TransporteModelEditor'
 import { TransporteResultViewer } from '@/components/transporte/TransporteResultViewer'
 import { TransporteGrafo } from '@/components/transporte/TransporteGrafo'
+import { AnimatedGroup } from '@/components/motion-primitives/animated-group'
+import { cardGroup } from '@/lib/motion'
 import { Separator } from '@/components/ui/separator'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { useWorkspaceStore } from '@/store/useWorkspaceStore'
@@ -11,6 +13,7 @@ import { Truck, ChevronDown } from 'lucide-react'
 export function TransporteWorkspace() {
   const resultadoTransporte = useWorkspaceStore(s => s.resultadoTransporte)
   const status = useWorkspaceStore(s => s.status)
+  const revisionIA = useWorkspaceStore(s => s.revisionIA)
   const [flujoBExpanded, setFlujoBExpanded] = useState(false)
 
   const isIdle = status === 'IDLE'
@@ -39,7 +42,7 @@ export function TransporteWorkspace() {
               <h2 className="text-base font-semibold" style={{ color: 'var(--ij-text-primary)' }}>
                 Cuéntale tu problema de transporte al Asistente Pivot
               </h2>
-              <p className="text-sm mt-1 max-w-xs" style={{ color: 'var(--ij-text-secondary)' }}>
+              <p className="text-sm mt-1 max-w-md mx-auto" style={{ color: 'var(--ij-text-secondary)' }}>
                 Describe orígenes, destinos, oferta, demanda y costos; el tutor formulará la tabla
                 y la resolverá paso a paso (Esquina Noroeste, Costo Mínimo, Vogel o MODI).
               </p>
@@ -68,7 +71,13 @@ export function TransporteWorkspace() {
             </div>
           </div>
         ) : (
-          <div className="pt-0 pr-4 pb-6 max-w-4xl space-y-5">
+          // `key` = revisionIA: las cards se re-animan cuando Pivot entrega modelo o
+          // resultado, no cuando el usuario edita la tabla a mano.
+          <AnimatedGroup
+            key={revisionIA}
+            className="pt-0 pr-4 pb-6 max-w-4xl space-y-5"
+            variants={cardGroup}
+          >
             <Card>
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
@@ -85,13 +94,9 @@ export function TransporteWorkspace() {
 
             <TransporteGrafo />
 
-            {resultadoTransporte && (
-              <>
-                <Separator />
-                <TransporteResultViewer resultado={resultadoTransporte} />
-              </>
-            )}
-          </div>
+            {resultadoTransporte && <Separator />}
+            {resultadoTransporte && <TransporteResultViewer resultado={resultadoTransporte} />}
+          </AnimatedGroup>
         )}
       </div>
     </div>

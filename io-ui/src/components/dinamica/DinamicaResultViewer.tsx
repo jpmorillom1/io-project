@@ -1,5 +1,9 @@
 import { type CSSProperties } from 'react'
+import { motion } from 'motion/react'
 import { RutaGrafo } from './RutaGrafo'
+import { InView } from '@/components/motion-primitives/in-view'
+import { ValorAnimado } from '@/components/shared/ValorAnimado'
+import { revealChip, revealRow, revealUp, stagger, T_BASE } from '@/lib/motion'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { useWorkspaceStore } from '@/store/useWorkspaceStore'
@@ -100,12 +104,18 @@ export function DinamicaResultViewer({ resultado }: Props) {
 
       {/* Política óptima o motivo de infactibilidad */}
       {infactible ? (
-        <div className="rounded-[4px] p-4" style={{ background: 'rgba(255,82,99,0.08)', borderLeft: '2px solid var(--ij-red)' }}>
+        <motion.div
+          className="rounded-[4px] p-4"
+          initial={{ opacity: 0, x: -6 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={T_BASE}
+          style={{ background: 'rgba(255,82,99,0.08)', borderLeft: '2px solid var(--ij-red)' }}
+        >
           <p className="font-semibold text-sm" style={{ color: 'var(--ij-red)' }}>INFACTIBLE</p>
           <p className="mt-1 text-sm" style={{ color: 'var(--ij-red)', opacity: 0.85 }}>
             {razonInfactible ?? 'El modelo no tiene solución factible. Las tablas de arriba muestran el cálculo hasta el punto del fallo.'}
           </p>
-        </div>
+        </motion.div>
       ) : (
         sol && <PoliticaOptima politica={sol.politicaOptima} rutaOptima={sol.rutaOptima} valorOptimo={sol.valorOptimo} interpretacion={sol.interpretacionPolitica} />
       )}
@@ -162,7 +172,8 @@ const cabecera: CSSProperties = { ...celdaBase, fontWeight: 600, color: 'var(--i
 
 function TablaEtapaView({ tabla }: { tabla: TablaEtapa }) {
   return (
-    <div>
+    // Hay una tabla por etapa y la lista es larga: cada una se revela al entrar en pantalla.
+    <InView variants={revealUp} transition={T_BASE} viewOptions={{ margin: '0px 0px -80px 0px' }} once>
       <div className="flex items-baseline gap-3 flex-wrap mb-1.5">
         <p className="text-sm font-semibold" style={{ color: 'var(--ij-teal)' }}>{tabla.nombreEtapa}</p>
         <span className="text-xs" style={{ ...MONO, color: 'var(--ij-text-secondary)' }}>{tabla.recurrencia}</span>
@@ -179,12 +190,16 @@ function TablaEtapaView({ tabla }: { tabla: TablaEtapa }) {
               <th style={cabecera}>f(estado)</th>
             </tr>
           </thead>
-          <tbody>
+          <motion.tbody variants={stagger(0.015)} initial="hidden" animate="visible">
             {tabla.filas.map((fila, fi) => (
               fila.evaluaciones.map((ev, ei) => {
                 const color = ev.optima ? 'var(--ij-green)' : 'var(--ij-text-primary)'
                 return (
-                  <tr key={`${fi}-${ei}`} style={{ background: ev.optima ? 'rgba(106,171,116,0.1)' : undefined }}>
+                  <motion.tr
+                    key={`${fi}-${ei}`}
+                    variants={revealRow}
+                    style={{ background: ev.optima ? 'rgba(106,171,116,0.1)' : undefined }}
+                  >
                     {ei === 0 && (
                       <td style={{ ...celdaBase, color: 'var(--ij-purple)', fontWeight: 600 }} rowSpan={fila.evaluaciones.length}>
                         {fila.estado}
@@ -199,14 +214,14 @@ function TablaEtapaView({ tabla }: { tabla: TablaEtapa }) {
                         {formatNum(fila.valorOptimo)}
                       </td>
                     )}
-                  </tr>
+                  </motion.tr>
                 )
               })
             ))}
-          </tbody>
+          </motion.tbody>
         </table>
       </div>
-    </div>
+    </InView>
   )
 }
 
@@ -221,26 +236,37 @@ function PoliticaOptima({
   interpretacion: string
 }) {
   return (
-    <div
+    <motion.div
       className="rounded-[4px] p-4 space-y-3"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={T_BASE}
       style={{ background: 'rgba(106,171,116,0.1)', borderLeft: '2px solid var(--ij-green)' }}
     >
       <div>
         <p className="font-semibold text-sm" style={{ color: 'var(--ij-green)' }}>Política óptima</p>
         <p className="mt-1 text-lg" style={{ ...MONO, color: 'var(--ij-green)' }}>
-          <span style={{ color: 'var(--ij-text-secondary)' }}>Z* = </span>{formatNum(valorOptimo)}
+          <span style={{ color: 'var(--ij-text-secondary)' }}>Z* = </span>
+          <ValorAnimado value={valorOptimo} />
         </p>
       </div>
 
       {rutaOptima && rutaOptima.length > 0 && (
-        <p className="text-sm" style={MONO}>
+        // La ruta se recorre nodo a nodo, en el sentido en que se viaja.
+        <motion.p
+          className="text-sm"
+          style={MONO}
+          variants={stagger(0.08, 0.15)}
+          initial="hidden"
+          animate="visible"
+        >
           {rutaOptima.map((n, i) => (
-            <span key={i}>
+            <motion.span key={i} variants={revealChip} style={{ display: 'inline-block' }}>
               {i > 0 && <span style={{ color: 'var(--ij-text-secondary)' }}>{' → '}</span>}
               <span style={{ color: 'var(--ij-purple)' }}>{n}</span>
-            </span>
+            </motion.span>
           ))}
-        </p>
+        </motion.p>
       )}
 
       <div className="overflow-x-auto">
@@ -254,17 +280,17 @@ function PoliticaOptima({
               <th style={cabecera}>Estado salida</th>
             </tr>
           </thead>
-          <tbody>
+          <motion.tbody variants={stagger(0.05, 0.2)} initial="hidden" animate="visible">
             {politica.map((d, i) => (
-              <tr key={i}>
+              <motion.tr key={i} variants={revealRow}>
                 <td style={{ ...celdaBase, color: 'var(--ij-teal)', fontWeight: 600 }}>{d.nombreEtapa}</td>
                 <td style={{ ...celdaBase, color: 'var(--ij-text-primary)' }}>{d.estadoEntrada}</td>
                 <td style={{ ...celdaBase, color: 'var(--ij-green)', fontWeight: 600 }}>{d.decision}</td>
                 <td style={{ ...celdaBase, color: 'var(--ij-text-primary)' }}>{formatNum(d.contribucion)}</td>
                 <td style={{ ...celdaBase, color: 'var(--ij-text-primary)' }}>{d.estadoSalida}</td>
-              </tr>
+              </motion.tr>
             ))}
-          </tbody>
+          </motion.tbody>
         </table>
       </div>
 
@@ -274,6 +300,6 @@ function PoliticaOptima({
         </p>
         <p className="text-sm" style={{ color: 'var(--ij-text-primary)', lineHeight: 1.55 }}>{interpretacion}</p>
       </div>
-    </div>
+    </motion.div>
   )
 }

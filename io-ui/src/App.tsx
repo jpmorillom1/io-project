@@ -1,5 +1,6 @@
-import { Routes, Route, Navigate } from 'react-router'
+import { Routes, Route } from 'react-router'
 import { AppShell } from '@/components/layout/AppShell'
+import { HomeWorkspace } from '@/pages/home/HomeWorkspace'
 import { SimplexWorkspace } from '@/pages/lp/SimplexWorkspace'
 import { TransporteWorkspace } from '@/pages/transporte/TransporteWorkspace'
 import { RedesWorkspace } from '@/pages/redes/RedesWorkspace'
@@ -11,7 +12,8 @@ export default function App() {
   return (
     <Routes>
       <Route element={<AppShell />}>
-        <Route index element={<Navigate to="/lp" replace />} />
+        <Route index element={<HomeWorkspace />} />
+        <Route path="/home" element={<HomeWorkspace />} />
         <Route path="/lp" element={<SimplexWorkspace />} />
         <Route path="/transporte" element={<TransporteWorkspace />} />
         <Route path="/redes" element={<RedesWorkspace />} />

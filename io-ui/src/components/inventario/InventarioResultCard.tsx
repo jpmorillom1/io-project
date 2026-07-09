@@ -1,4 +1,7 @@
 import { type CSSProperties } from 'react'
+import { motion, type Variants } from 'motion/react'
+import { ValorAnimado } from '@/components/shared/ValorAnimado'
+import { revealChip, revealRow, stagger, T_BASE, T_SNAPPY } from '@/lib/motion'
 import { formatNum } from '@/lib/utils'
 import type { SolveResultInventario, SolucionInventario, MetodoInventario } from '@/types/io'
 
@@ -34,12 +37,18 @@ export function InventarioResultCard({ resultado }: Props) {
 
   if (resultado.status !== 'OPTIMO' || !resultado.solution) {
     return (
-      <div className="rounded-[4px] p-4" style={{ background: 'rgba(255,82,99,0.08)', borderLeft: '2px solid var(--ij-red)' }}>
+      <motion.div
+        className="rounded-[4px] p-4"
+        initial={{ opacity: 0, x: -6 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={T_BASE}
+        style={{ background: 'rgba(255,82,99,0.08)', borderLeft: '2px solid var(--ij-red)' }}
+      >
         <p className="font-semibold text-sm" style={{ color: 'var(--ij-red)' }}>{resultado.status}</p>
         <p className="mt-1 text-sm" style={{ color: 'var(--ij-red)', opacity: 0.85 }}>
           El modelo no pudo resolverse. Revisa los parámetros de entrada.
         </p>
-      </div>
+      </motion.div>
     )
   }
 
@@ -50,32 +59,44 @@ export function InventarioResultCard({ resultado }: Props) {
   })
 
   return (
-    <div
+    <motion.div
       className="rounded-[4px] p-4 space-y-4"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={T_BASE}
       style={{ background: 'rgba(106,171,116,0.1)', borderLeft: '2px solid var(--ij-green)' }}
     >
       <div className="flex flex-wrap gap-8">
         <div>
           <p style={{ fontSize: '11px', color: 'var(--ij-text-secondary)', fontWeight: 600 }}>Cantidad óptima Q*</p>
-          <p className="text-lg" style={{ ...MONO, color: 'var(--ij-green)' }}>{formatNum(sol.cantidadOptima)}</p>
+          <p className="text-lg" style={{ ...MONO, color: 'var(--ij-green)' }}>
+            <ValorAnimado value={sol.cantidadOptima} />
+          </p>
         </div>
         <div>
           <p style={{ fontSize: '11px', color: 'var(--ij-text-secondary)', fontWeight: 600 }}>Costo total anual</p>
-          <p className="text-lg" style={{ ...MONO, color: 'var(--ij-green)' }}>{formatNum(sol.costoTotalAnual)}</p>
+          <p className="text-lg" style={{ ...MONO, color: 'var(--ij-green)' }}>
+            <ValorAnimado value={sol.costoTotalAnual} />
+          </p>
         </div>
       </div>
 
       {secundarios.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-2">
+        <motion.div
+          className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-2"
+          variants={stagger(0.04, 0.12)}
+          initial="hidden"
+          animate="visible"
+        >
           {secundarios.map(c => (
-            <div key={c.key}>
+            <motion.div key={c.key} variants={revealChip}>
               <p style={{ fontSize: '11px', color: 'var(--ij-text-secondary)' }}>{c.label}</p>
               <p className="text-sm" style={{ ...MONO, color: 'var(--ij-text-primary)' }}>
                 {formatNum(sol[c.key] as number)}
               </p>
-            </div>
+            </motion.div>
           ))}
-        </div>
+        </motion.div>
       )}
 
       {metodo === 'EOQ_DESCUENTOS' && sol.comparativa && sol.comparativa.length > 0 && (
@@ -93,20 +114,23 @@ export function InventarioResultCard({ resultado }: Props) {
                   <th style={celdaCab}>Factible</th>
                 </tr>
               </thead>
-              <tbody>
+              <motion.tbody variants={stagger(0.05, 0.2)} initial="hidden" animate="visible">
                 {sol.comparativa.map((fila, i) => {
                   const ganador = fila.factible && fila.precioUnitario === sol.precioUnitarioOptimo
                   const color = ganador ? 'var(--ij-green)' : fila.factible ? 'var(--ij-text-primary)' : 'var(--ij-text-muted)'
                   return (
-                    <tr key={i} style={{ background: ganador ? 'rgba(106,171,116,0.12)' : undefined }}>
+                    <motion.tr
+                      key={i}
+                      variants={ganador ? filaGanadora(sol.comparativa!.length) : revealRow}
+                    >
                       <td style={{ ...celda, color }}>{formatNum(fila.precioUnitario)}</td>
                       <td style={{ ...celda, color }}>{formatNum(fila.cantidad)}</td>
                       <td style={{ ...celda, color, fontWeight: ganador ? 700 : 400 }}>{formatNum(fila.costoTotal)}</td>
                       <td style={{ ...celda, color }}>{fila.factible ? '✓' : '—'}</td>
-                    </tr>
+                    </motion.tr>
                   )
                 })}
-              </tbody>
+              </motion.tbody>
             </table>
           </div>
         </div>
@@ -120,8 +144,31 @@ export function InventarioResultCard({ resultado }: Props) {
           {sol.interpretacionPolitica}
         </p>
       </div>
-    </div>
+    </motion.div>
   )
+}
+
+const VERDE_TENUE = 'rgba(106,171,116,0.12)'
+const VERDE_VIVO = 'rgba(106,171,116,0.34)'
+
+/**
+ * Fila del tramo ganador. El destello va dentro de la variante (no en `animate`):
+ * un hijo con `animate` propio deja de heredar el escalonado del `<tbody>`.
+ * Espera a que se hayan pintado las `n` filas para que se lea la comparación.
+ */
+function filaGanadora(n: number): Variants {
+  return {
+    hidden: { opacity: 0, x: -6, backgroundColor: VERDE_TENUE },
+    visible: {
+      opacity: 1,
+      x: 0,
+      backgroundColor: [VERDE_TENUE, VERDE_VIVO, VERDE_TENUE],
+      transition: {
+        ...T_SNAPPY,
+        backgroundColor: { duration: 1, delay: 0.05 * n + 0.3, times: [0, 0.4, 1] },
+      },
+    },
+  }
 }
 
 const celdaCab: CSSProperties = {

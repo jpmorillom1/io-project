@@ -33,6 +33,12 @@ interface WorkspaceStore {
   validado: boolean
   isChatBusy: boolean
   ultimaActualizacionIA: ActualizacionIA
+  /**
+   * Se incrementa cada vez que la IA entrega un modelo, una validación o un resultado.
+   * Los workspaces lo usan como `key` del grupo de cards para re-animar su entrada.
+   * No cambia al editar a mano, así que escribir en el formulario no relanza nada.
+   */
+  revisionIA: number
 
   setStatus: (s: WorkspaceStatus) => void
   setSesionId: (id: string | null) => void
@@ -84,6 +90,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
   validado: false,
   isChatBusy: false,
   ultimaActualizacionIA: null,
+  revisionIA: 0,
 
   setStatus: (status) => set({ status }),
   setSesionId: (sesionId) => set({ sesionId }),
@@ -112,5 +119,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
     validado: v.esValido,
   }),
   setIsChatBusy: (isChatBusy) => set({ isChatBusy }),
-  setUltimaActualizacionIA: (ultimaActualizacionIA) => set({ ultimaActualizacionIA }),
+  setUltimaActualizacionIA: (ultimaActualizacionIA) => set(s => ({
+    ultimaActualizacionIA,
+    // Limpiar el aviso (null) no cuenta como entrega: no debe re-animar las cards.
+    revisionIA: ultimaActualizacionIA === null ? s.revisionIA : s.revisionIA + 1,
+  })),
 }))

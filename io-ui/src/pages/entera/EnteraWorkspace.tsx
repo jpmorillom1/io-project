@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { ChatPanel } from '@/components/chat/ChatPanel'
 import { EnteraModelEditor } from '@/components/entera/EnteraModelEditor'
 import { EnteraResultViewer } from '@/components/entera/EnteraResultViewer'
+import { AnimatedGroup } from '@/components/motion-primitives/animated-group'
+import { cardGroup } from '@/lib/motion'
 import { Separator } from '@/components/ui/separator'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { useWorkspaceStore } from '@/store/useWorkspaceStore'
@@ -10,6 +12,7 @@ import { Binary, ChevronDown } from 'lucide-react'
 export function EnteraWorkspace() {
   const resultadoEntero = useWorkspaceStore(s => s.resultadoEntero)
   const status = useWorkspaceStore(s => s.status)
+  const revisionIA = useWorkspaceStore(s => s.revisionIA)
   const [flujoBExpanded, setFlujoBExpanded] = useState(false)
 
   const isIdle = status === 'IDLE'
@@ -38,7 +41,7 @@ export function EnteraWorkspace() {
               <h2 className="text-base font-semibold" style={{ color: 'var(--ij-text-primary)' }}>
                 Cuéntale tu problema de PL Entera al Asistente Pivot
               </h2>
-              <p className="text-sm mt-1 max-w-xs" style={{ color: 'var(--ij-text-secondary)' }}>
+              <p className="text-sm mt-1 max-w-md mx-auto" style={{ color: 'var(--ij-text-secondary)' }}>
                 Describe un problema donde una o más variables deban ser enteras (cantidades
                 indivisibles) o binarias (decisiones sí/no); el tutor lo formulará y lo resolverá
                 con Branch &amp; Bound, mostrando el árbol de nodos paso a paso.
@@ -68,7 +71,13 @@ export function EnteraWorkspace() {
             </div>
           </div>
         ) : (
-          <div className="pt-0 pr-4 pb-6 max-w-4xl space-y-5">
+          // `key` = revisionIA: las cards se re-animan cuando Pivot entrega modelo o
+          // resultado, no cuando el usuario edita el modelo a mano.
+          <AnimatedGroup
+            key={revisionIA}
+            className="pt-0 pr-4 pb-6 max-w-4xl space-y-5"
+            variants={cardGroup}
+          >
             <Card>
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
@@ -83,13 +92,9 @@ export function EnteraWorkspace() {
               </CardContent>
             </Card>
 
-            {resultadoEntero && (
-              <>
-                <Separator />
-                <EnteraResultViewer resultado={resultadoEntero} />
-              </>
-            )}
-          </div>
+            {resultadoEntero && <Separator />}
+            {resultadoEntero && <EnteraResultViewer resultado={resultadoEntero} />}
+          </AnimatedGroup>
         )}
       </div>
     </div>

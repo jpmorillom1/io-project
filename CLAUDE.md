@@ -35,6 +35,11 @@ de un módulo TODO sin que se te indique explícitamente.
 
 - **Backend:** Spring Boot **4.1.0**, Java **21**
 - **Frontend:** React + Vite (en `io-ui/`, aún en desarrollo)
+- **Animación (frontend):** `motion` (Framer Motion) + primitivas copiadas de
+  [motion-primitives](https://motion-primitives.com) en `io-ui/src/components/motion-primitives/`.
+  El vocabulario compartido (duraciones, easing, variantes) vive en `io-ui/src/lib/motion.ts`;
+  úsalo en vez de inventar `transition` por componente. `prefers-reduced-motion` se respeta
+  una sola vez con `<MotionConfig reducedMotion="user">` en `main.tsx`
 - **IA:** LangChain4j **1.13.0** + módulo `langchain4j-agentic` 1.13.0-beta23 para el
   Human-in-the-Loop (ver nota crítica abajo)
 - **LLM:** OpenAI-compatible apuntado a **Groq** (`llama-3.3-70b-versatile`)

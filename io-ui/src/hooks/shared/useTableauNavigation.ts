@@ -3,6 +3,8 @@ import type { SolveStep, TableauHighlights } from '@/types/io'
 
 export function useTableauNavigation(steps: SolveStep[]) {
   const [index, setIndex] = useState(0)
+  /** +1 = avanzamos al siguiente paso, −1 = retrocedimos. Orienta la animación. */
+  const [direccion, setDireccion] = useState(1)
 
   const pasoActual = steps[index] ?? steps[0]
   const totalPasos = steps.length
@@ -21,13 +23,24 @@ export function useTableauNavigation(steps: SolveStep[]) {
 
   return {
     pasoActual,
+    index,
+    direccion,
     numeroPaso: index + 1,
     totalPasos,
     puedeAnterior: index > 0,
     puedeSiguiente: index < totalPasos - 1,
-    irAnterior: () => setIndex(i => Math.max(0, i - 1)),
-    irSiguiente: () => setIndex(i => Math.min(totalPasos - 1, i + 1)),
+    irAnterior: () => {
+      setDireccion(-1)
+      setIndex(i => Math.max(0, i - 1))
+    },
+    irSiguiente: () => {
+      setDireccion(1)
+      setIndex(i => Math.min(totalPasos - 1, i + 1))
+    },
     highlights,
-    resetIndex: () => setIndex(0),
+    resetIndex: () => {
+      setDireccion(1)
+      setIndex(0)
+    },
   }
 }

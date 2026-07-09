@@ -1,4 +1,6 @@
 import { type CSSProperties, useId } from 'react'
+import { motion } from 'motion/react'
+import { popIn, stagger, T_BASE } from '@/lib/motion'
 
 /**
  * Grafo genérico de nodos y aristas (SVG plano). Es agnóstico del dominio: recibe
@@ -75,6 +77,12 @@ const ROW_GAP = 84      // separación mínima entre nodos de una columna
 const HEADER_Y = 22     // baseline del encabezado de columna
 const LANE_TOP = 12     // borde superior del carril de fondo
 
+/** Una arista no se traza: aparece. Trazarla pondría la flecha antes que la línea. */
+const EDGE_VARIANTS = {
+  hidden: { opacity: 0 },
+  visible: { opacity: 1, transition: T_BASE },
+}
+
 export function NetworkGraph({
   nodes, edges, directed = true, curved = true, columnLabels, height,
 }: Props) {
@@ -143,6 +151,7 @@ export function NetworkGraph({
         })}
 
         {/* Aristas (detrás de los nodos) */}
+        <motion.g variants={stagger(0.035)} initial="hidden" animate="visible">
         {edges.map((e, i) => {
           const a = pos.get(e.from)
           const b = pos.get(e.to)
@@ -169,7 +178,7 @@ export function NetworkGraph({
             : { d: `M${p1.x},${p1.y} L${p2.x},${p2.y}`, mid: { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 } }
 
           return (
-            <g key={i}>
+            <motion.g key={i} variants={EDGE_VARIANTS}>
               <path
                 d={d}
                 fill="none"
@@ -182,18 +191,24 @@ export function NetworkGraph({
               {e.label != null && e.label !== '' && (
                 <EdgeLabel x={mid.x} y={mid.y} text={e.label} active={!!e.active} />
               )}
-            </g>
+            </motion.g>
           )
         })}
+        </motion.g>
 
-        {/* Nodos */}
+        {/* Nodos — entran después de las aristas. */}
+        <motion.g variants={stagger(0.04, 0.12)} initial="hidden" animate="visible">
         {nodes.map(n => {
           const p = pos.get(n.id)!
           const color = VARIANT_COLOR[n.variant ?? 'default']
           const ficticio = n.variant === 'default'
           const recortado = truncar(n.label, NODE_LABEL_MAX)
           return (
-            <g key={n.id}>
+            <motion.g
+              key={n.id}
+              variants={popIn}
+              style={{ transformOrigin: `${p.x}px ${p.y}px` }}
+            >
               <title>{n.label}{n.sublabel ? ` — ${n.sublabel}` : ''}</title>
               {/* Halo */}
               <circle cx={p.x} cy={p.y} r={NODE_R + 5} fill={color} fillOpacity={0.08} />
@@ -222,9 +237,10 @@ export function NetworkGraph({
                   {n.sublabel}
                 </text>
               )}
-            </g>
+            </motion.g>
           )
         })}
+        </motion.g>
       </svg>
     </div>
   )

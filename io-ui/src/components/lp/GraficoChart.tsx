@@ -10,6 +10,8 @@ import {
   ReferenceLine,
   Customized,
 } from 'recharts'
+import { motion } from 'motion/react'
+import { popIn, stagger, T_SLOW } from '@/lib/motion'
 import type { StepDatosGrafico, PuntoVertice } from '@/types/io'
 
 interface Props {
@@ -53,71 +55,78 @@ function OverlayLayer({ xAxisMap, yAxisMap, region, vertices, var1, var2 }: any)
 
   return (
     <g>
-      {/* Región factible */}
+      {/* Región factible: el contorno se traza y el relleno entra después. */}
       {polygonPoints && (
-        <polygon
+        <motion.polygon
           points={polygonPoints}
           fill="rgba(20,196,182,0.1)"
           stroke="rgba(20,196,182,0.35)"
           strokeWidth={1.5}
           strokeDasharray="5 3"
+          initial={{ pathLength: 0, fillOpacity: 0 }}
+          animate={{ pathLength: 1, fillOpacity: 1 }}
+          transition={{ pathLength: T_SLOW, fillOpacity: { duration: 0.5, delay: 0.35 } }}
         />
       )}
 
-      {/* Vértices */}
-      {(vertices as PuntoVertice[]).map((v, i) => {
-        const { cx, cy } = toSvg(v.x, v.y)
-        return (
-          <g key={i}>
-            {/* Halo para el óptimo */}
-            {v.esOptimo && (
+      {/* Vértices: entran uno a uno, ya dibujada la región. */}
+      <motion.g variants={stagger(0.07, 0.5)} initial="hidden" animate="visible">
+        {(vertices as PuntoVertice[]).map((v, i) => {
+          const { cx, cy } = toSvg(v.x, v.y)
+          return (
+            <motion.g key={i} variants={popIn} style={{ transformOrigin: `${cx}px ${cy}px` }}>
+              {/* Halo del óptimo: late para que la vista aterrice en él. */}
+              {v.esOptimo && (
+                <motion.circle
+                  cx={cx}
+                  cy={cy}
+                  r={14}
+                  fill="rgba(20,196,182,0.12)"
+                  stroke="rgba(20,196,182,0.3)"
+                  strokeWidth={1}
+                  animate={{ r: [14, 17, 14], opacity: [0.9, 0.35, 0.9] }}
+                  transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
+                />
+              )}
+              {/* Punto */}
               <circle
                 cx={cx}
                 cy={cy}
-                r={14}
-                fill="rgba(20,196,182,0.12)"
-                stroke="rgba(20,196,182,0.3)"
-                strokeWidth={1}
+                r={v.esOptimo ? 6 : 4}
+                fill={v.esOptimo ? '#14c4b6' : 'rgba(255,255,255,0.55)'}
+                stroke={v.esOptimo ? '#0a7a72' : 'rgba(255,255,255,0.2)'}
+                strokeWidth={1.5}
               />
-            )}
-            {/* Punto */}
-            <circle
-              cx={cx}
-              cy={cy}
-              r={v.esOptimo ? 6 : 4}
-              fill={v.esOptimo ? '#14c4b6' : 'rgba(255,255,255,0.55)'}
-              stroke={v.esOptimo ? '#0a7a72' : 'rgba(255,255,255,0.2)'}
-              strokeWidth={1.5}
-            />
-            {/* Etiqueta de coordenadas */}
-            <text
-              x={cx + 9}
-              y={cy - (v.esOptimo ? 10 : 6)}
-              style={{
-                ...MONO,
-                fontSize: 10,
-                fill: v.esOptimo ? '#14c4b6' : 'var(--ij-text-secondary)',
-              }}
-            >
-              {`(${v.x}, ${v.y})`}
-            </text>
-            {/* Valor Z */}
-            {v.valorZ !== undefined && (
+              {/* Etiqueta de coordenadas */}
               <text
                 x={cx + 9}
-                y={cy + (v.esOptimo ? 4 : 6)}
+                y={cy - (v.esOptimo ? 10 : 6)}
                 style={{
                   ...MONO,
-                  fontSize: 9,
-                  fill: v.esOptimo ? 'rgba(20,196,182,0.8)' : 'rgba(255,255,255,0.3)',
+                  fontSize: 10,
+                  fill: v.esOptimo ? '#14c4b6' : 'var(--ij-text-secondary)',
                 }}
               >
-                {`Z=${v.valorZ}`}
+                {`(${v.x}, ${v.y})`}
               </text>
-            )}
-          </g>
-        )
-      })}
+              {/* Valor Z */}
+              {v.valorZ !== undefined && (
+                <text
+                  x={cx + 9}
+                  y={cy + (v.esOptimo ? 4 : 6)}
+                  style={{
+                    ...MONO,
+                    fontSize: 9,
+                    fill: v.esOptimo ? 'rgba(20,196,182,0.8)' : 'rgba(255,255,255,0.3)',
+                  }}
+                >
+                  {`Z=${v.valorZ}`}
+                </text>
+              )}
+            </motion.g>
+          )
+        })}
+      </motion.g>
 
       {/* Etiquetas de ejes */}
       <text
@@ -215,7 +224,11 @@ export function GraficoChart({ datos }: Props) {
             stroke={LINE_COLORS[i % LINE_COLORS.length]}
             name={linea.etiqueta}
             legendType="line"
-            isAnimationActive={false}
+            // Las restricciones se trazan en cascada, en el orden en que se formularon.
+            isAnimationActive
+            animationDuration={600}
+            animationBegin={i * 90}
+            animationEasing="ease-out"
           />
         ))}
 

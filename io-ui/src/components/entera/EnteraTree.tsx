@@ -1,8 +1,19 @@
 import { type CSSProperties, useMemo } from 'react'
+import { motion } from 'motion/react'
+import { popIn, stagger, T_BASE } from '@/lib/motion'
 import { formatNum } from '@/lib/utils'
 import type { SolveStepEntera, AccionNodo } from '@/types/io'
 
 const MONO: CSSProperties = { fontFamily: "'JetBrains Mono', monospace" }
+
+// `nodos` conserva el orden de exploración de B&B, así que escalonar por índice
+// reproduce el recorrido del algoritmo: el árbol se dibuja como se recorrió.
+const PASO_NODO = 0.08
+
+const EDGE_VARIANTS = {
+  hidden: { opacity: 0 },
+  visible: { opacity: 1, transition: T_BASE },
+}
 
 // Color por acción del nodo (ver contrato: RAMIFICA/INCUMBENTE/PODA_COTA/PODA_INFACTIBLE).
 const ACCION_COLOR: Record<AccionNodo, string> = {
@@ -62,6 +73,7 @@ export function EnteraTree({ steps, seleccionado }: Props) {
         role="img"
       >
         {/* Aristas padre → hijo (con la rama que las define) */}
+        <motion.g variants={stagger(PASO_NODO)} initial="hidden" animate="visible">
         {nodos.map(n => {
           if (n.padreId < 0) return null
           const padre = byId.get(n.padreId)
@@ -73,7 +85,7 @@ export function EnteraTree({ steps, seleccionado }: Props) {
           const rama = n.step.datos.rama
           const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 }
           return (
-            <g key={`edge-${n.id}`}>
+            <motion.g key={`edge-${n.id}`} variants={EDGE_VARIANTS}>
               <path
                 d={`M${p1.x},${p1.y} C${p1.x},${p1.y + LEVEL_H * 0.4} ${p2.x},${p2.y - LEVEL_H * 0.4} ${p2.x},${p2.y}`}
                 fill="none"
@@ -82,11 +94,13 @@ export function EnteraTree({ steps, seleccionado }: Props) {
                 strokeOpacity={0.5}
               />
               {rama && <EdgeLabel x={mid.x} y={mid.y} text={rama} />}
-            </g>
+            </motion.g>
           )
         })}
+        </motion.g>
 
-        {/* Nodos */}
+        {/* Nodos — cada uno cae justo después de su arista. */}
+        <motion.g variants={stagger(PASO_NODO, PASO_NODO / 2)} initial="hidden" animate="visible">
         {nodos.map(n => {
           const c = centro(n)
           const d = n.step.datos
@@ -96,15 +110,22 @@ export function EnteraTree({ steps, seleccionado }: Props) {
           const z = d.zRelajacion
           const esInfactible = d.estadoRelajacion && d.estadoRelajacion !== 'OPTIMO'
           return (
-            <g key={`node-${n.id}`}>
+            <motion.g
+              key={`node-${n.id}`}
+              variants={popIn}
+              style={{ transformOrigin: `${c.x}px ${c.y}px` }}
+            >
               <title>
                 {`Nodo ${d.nodoId} — ${d.rama ?? 'raíz'}${z != null ? ` · z=${formatNum(z)}` : ''}${accion ? ` · ${accion}` : ''}`}
               </title>
               {activo && (
-                <rect
+                <motion.rect
                   x={c.x - NODE_W / 2 - 4} y={c.y - NODE_H / 2 - 4}
                   width={NODE_W + 8} height={NODE_H + 8} rx={8}
-                  fill="none" stroke={color} strokeWidth={2} strokeOpacity={0.55}
+                  fill="none" stroke={color} strokeWidth={2}
+                  initial={{ strokeOpacity: 0 }}
+                  animate={{ strokeOpacity: 0.55 }}
+                  transition={T_BASE}
                 />
               )}
               <rect
@@ -133,9 +154,10 @@ export function EnteraTree({ steps, seleccionado }: Props) {
               >
                 {esInfactible ? 'infactible' : z != null ? `z = ${formatNum(z)}` : '—'}
               </text>
-            </g>
+            </motion.g>
           )
         })}
+        </motion.g>
       </svg>
     </div>
   )

@@ -5,6 +5,7 @@ import { ApprovalCard } from './ApprovalCard'
 import { Button } from '@/components/ui/button'
 import { Loader2, Send } from 'lucide-react'
 import { ShaderGlow } from '@/components/ui/ShaderGlow'
+import { PivotAvatar } from './PivotAvatar'
 
 const PROMPTS_EJEMPLO = [
   'Quiero maximizar la ganancia produciendo dos productos con restricciones de recursos...',
@@ -40,7 +41,7 @@ export function ChatPanel() {
       {/* Header */}
       <div className="px-4 py-3" style={{ background: 'var(--ij-bg-editor)', borderBottom: '1px solid var(--ij-bg-secondary)' }}>
         <div className="flex items-center gap-2.5">
-          <ShaderGlow target="circle" className="shrink-0 h-5 w-5" />
+          <PivotAvatar className="shrink-0" />
           <div>
             <p
               className="text-sm font-semibold leading-tight"

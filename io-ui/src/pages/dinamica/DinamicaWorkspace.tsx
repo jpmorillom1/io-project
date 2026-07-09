@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { ChatPanel } from '@/components/chat/ChatPanel'
 import { DinamicaModelEditor } from '@/components/dinamica/DinamicaModelEditor'
 import { DinamicaResultViewer } from '@/components/dinamica/DinamicaResultViewer'
+import { AnimatedGroup } from '@/components/motion-primitives/animated-group'
+import { cardGroup } from '@/lib/motion'
 import { Separator } from '@/components/ui/separator'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { useWorkspaceStore } from '@/store/useWorkspaceStore'
@@ -10,6 +12,7 @@ import { Workflow, ChevronDown } from 'lucide-react'
 export function DinamicaWorkspace() {
   const resultadoDinamica = useWorkspaceStore(s => s.resultadoDinamica)
   const status = useWorkspaceStore(s => s.status)
+  const revisionIA = useWorkspaceStore(s => s.revisionIA)
   const [flujoBExpanded, setFlujoBExpanded] = useState(false)
 
   const isIdle = status === 'IDLE'
@@ -38,7 +41,7 @@ export function DinamicaWorkspace() {
               <h2 className="text-base font-semibold" style={{ color: 'var(--ij-text-primary)' }}>
                 Cuéntale tu problema de Programación Dinámica al Asistente Pivot
               </h2>
-              <p className="text-sm mt-1 max-w-xs" style={{ color: 'var(--ij-text-secondary)' }}>
+              <p className="text-sm mt-1 max-w-md mx-auto" style={{ color: 'var(--ij-text-secondary)' }}>
                 Asignación de recursos, mochila, ruta por etapas, planificación de producción o
                 reemplazo de equipos: el tutor lo formulará por etapas y lo resolverá con recursión
                 hacia atrás, mostrando una tabla por etapa y la política óptima.
@@ -68,7 +71,13 @@ export function DinamicaWorkspace() {
             </div>
           </div>
         ) : (
-          <div className="pt-0 pr-4 pb-6 max-w-4xl space-y-5">
+          // `key` = revisionIA: las cards se re-animan cuando Pivot entrega modelo o
+          // resultado, no cuando el usuario edita el modelo a mano.
+          <AnimatedGroup
+            key={revisionIA}
+            className="pt-0 pr-4 pb-6 max-w-4xl space-y-5"
+            variants={cardGroup}
+          >
             <Card>
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
@@ -83,13 +92,9 @@ export function DinamicaWorkspace() {
               </CardContent>
             </Card>
 
-            {resultadoDinamica && (
-              <>
-                <Separator />
-                <DinamicaResultViewer resultado={resultadoDinamica} />
-              </>
-            )}
-          </div>
+            {resultadoDinamica && <Separator />}
+            {resultadoDinamica && <DinamicaResultViewer resultado={resultadoDinamica} />}
+          </AnimatedGroup>
         )}
       </div>
     </div>

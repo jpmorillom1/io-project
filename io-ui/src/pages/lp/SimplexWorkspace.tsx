@@ -4,6 +4,8 @@ import { ProblemInput } from '@/components/lp/ProblemInput'
 import { ModelEditor } from '@/components/lp/ModelEditor'
 import { TableauViewer } from '@/components/lp/TableauViewer'
 import { GraficoResultViewer } from '@/components/lp/GraficoResultViewer'
+import { AnimatedGroup } from '@/components/motion-primitives/animated-group'
+import { cardGroup } from '@/lib/motion'
 import { Separator } from '@/components/ui/separator'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { useWorkspaceStore } from '@/store/useWorkspaceStore'
@@ -13,6 +15,7 @@ export function SimplexWorkspace() {
   const resultado = useWorkspaceStore(s => s.resultado)
   const resultadoGrafico = useWorkspaceStore(s => s.resultadoGrafico)
   const status = useWorkspaceStore(s => s.status)
+  const revisionIA = useWorkspaceStore(s => s.revisionIA)
   const [flujoBExpanded, setFlujoBExpanded] = useState(false)
 
   const isIdle = status === 'IDLE'
@@ -47,7 +50,7 @@ export function SimplexWorkspace() {
               >
                 Cuéntale tu problema al Asistente Pivot
               </h2>
-              <p className="text-sm mt-1 max-w-xs" style={{ color: 'var(--ij-text-secondary)' }}>
+              <p className="text-sm mt-1 max-w-md mx-auto" style={{ color: 'var(--ij-text-secondary)' }}>
                 Escribe en el chat y el tutor formulará el modelo, lo validará y lo resolverá paso a paso.
               </p>
             </div>
@@ -82,7 +85,13 @@ export function SimplexWorkspace() {
             </div>
           </div>
         ) : (
-          <div className="pt-0 pr-4 pb-6 max-w-4xl space-y-5">
+          // `key` = revisionIA: las cards se re-animan cuando Pivot entrega modelo o
+          // resultado, no cuando el usuario edita el formulario a mano.
+          <AnimatedGroup
+            key={revisionIA}
+            className="pt-0 pr-4 pb-6 max-w-4xl space-y-5"
+            variants={cardGroup}
+          >
             <Card>
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
@@ -110,20 +119,12 @@ export function SimplexWorkspace() {
               </div>
             </details>
 
-            {resultado && (
-              <>
-                <Separator />
-                <TableauViewer resultado={resultado} />
-              </>
-            )}
+            {resultado && <Separator />}
+            {resultado && <TableauViewer resultado={resultado} />}
 
-            {resultadoGrafico && (
-              <>
-                <Separator />
-                <GraficoResultViewer resultado={resultadoGrafico} />
-              </>
-            )}
-          </div>
+            {resultadoGrafico && <Separator />}
+            {resultadoGrafico && <GraficoResultViewer resultado={resultadoGrafico} />}
+          </AnimatedGroup>
         )}
       </div>
     </div>
