@@ -85,6 +85,7 @@ export interface ChatResponse {
   resultadoRed: SolveResultRed | null
   resultadoEntero: SolveResultEntera | null
   resultadoInventario: SolveResultInventario | null
+  resultadoDinamica: SolveResultDinamica | null
   solicitudAprobacion: SolicitudAprobacion | null
 }
 
@@ -95,14 +96,16 @@ export interface ChatResponse {
 export type MetodoResolucion =
   | 'SIMPLEX' | 'GRAN_M' | 'DOS_FASES' | 'GRAFICO'
   | 'TRANSPORTE' | 'REDES' | 'BRANCH_AND_BOUND' | 'INVENTARIO'
+  | 'PROGRAMACION_DINAMICA'
 
 export interface SolicitudAprobacion {
   solicitudId: string
   metodo: MetodoResolucion
   // El modelo es genérico: ModeloLP para métodos LP/gráfico, ModeloTransporte
   // para TRANSPORTE, ModeloRed para REDES, ModeloEntero para BRANCH_AND_BOUND,
-  // ModeloInventario para INVENTARIO.
-  modelo: ModeloLP | ModeloTransporte | ModeloRed | ModeloEntero | ModeloInventario
+  // ModeloInventario para INVENTARIO, ModeloDinamico para PROGRAMACION_DINAMICA
+  // (el submodelo concreto viaja en modelo.metodo).
+  modelo: ModeloLP | ModeloTransporte | ModeloRed | ModeloEntero | ModeloInventario | ModeloDinamico
 }
 
 export interface DecisionAprobacionRequest {
@@ -495,4 +498,134 @@ export interface SolveResultInventario {
   status: SolveStatus
   solution: SolucionInventario | null
   steps: SolveStepInventario[]
+}
+
+// ── Programación Dinámica (determinística) ────────────────────────────────────
+
+export type MetodoDinamico =
+  | 'ASIGNACION_RECURSOS' | 'MOCHILA' | 'RUTA_ETAPAS'
+  | 'PLANIFICACION_PRODUCCION' | 'REEMPLAZO_EQUIPOS'
+
+export type SentidoOptimizacion = 'MAXIMIZAR' | 'MINIMIZAR'
+
+export interface ActividadRecurso { nombre: string; retornos: number[] } // longitud = recursoTotal + 1
+export interface ArticuloMochila { nombre: string; peso: number; valor: number; unidadesMaximas?: number }
+export interface EtapaRuta { etapa: number; nodos: string[] }
+export interface ArcoRuta { origen: string; destino: string; costo: number }
+export interface DatosEdadEquipo { edad: number; ingreso: number; costoOperacion: number; valorRescate: number }
+
+// Body de los endpoints /api/v1/dinamica/*. Solo se envían los campos del submodelo;
+// el endpoint fuerza el metodo, así que es opcional.
+export interface ModeloDinamico {
+  metodo?: MetodoDinamico
+  sentido?: SentidoOptimizacion   // SOLO configurable en asignación de recursos y ruta por etapas
+
+  // ASIGNACION_RECURSOS
+  recursoTotal?: number
+  actividades?: ActividadRecurso[]
+
+  // MOCHILA
+  capacidad?: number
+  articulos?: ArticuloMochila[]
+
+  // RUTA_ETAPAS
+  etapasRuta?: EtapaRuta[]
+  arcos?: ArcoRuta[]
+
+  // PLANIFICACION_PRODUCCION
+  demandas?: number[]
+  costoPreparacion?: number
+  costoUnitarioProduccion?: number
+  costoMantener?: number
+  capacidadProduccion?: number
+  capacidadAlmacen?: number
+  inventarioInicial?: number
+  inventarioFinal?: number
+
+  // REEMPLAZO_EQUIPOS
+  horizonteAnios?: number
+  edadInicial?: number
+  edadMaxima?: number
+  costoCompra?: number
+  tablaEdades?: DatosEdadEquipo[]
+}
+
+// Una celda de la tabla: valorTotal = contribucion + valorFuturo (muestra las tres columnas).
+export interface EvaluacionDecision {
+  decision: string        // ya formateado: "x = 2", "CONSERVAR", "ir a C"
+  contribucion: number    // retorno/costo inmediato de la decisión
+  valorFuturo: number     // f_(k+1) del estado al que lleva
+  valorTotal: number
+  optima: boolean         // la que gana la fila
+}
+
+export interface FilaEtapa {
+  estado: string          // ya formateado: "s = 4", "edad = 2", "B"
+  evaluaciones: EvaluacionDecision[]
+  decisionOptima: string
+  valorOptimo: number     // f_k(estado)
+}
+
+export interface TablaEtapa {
+  etapa: number
+  nombreEtapa: string
+  recurrencia: string     // la recurrencia instanciada para esta etapa
+  filas: FilaEtapa[]      // solo estados ALCANZABLES — no asumas un rango contiguo
+}
+
+export interface DecisionOptima {
+  etapa: number
+  nombreEtapa: string
+  estadoEntrada: string
+  decision: string
+  contribucion: number
+  estadoSalida: string
+}
+
+// Record unificado: solo rutaOptima depende del submodelo (null salvo en RUTA_ETAPAS).
+export interface SolucionDinamica {
+  valorOptimo: number
+  tablas: TablaEtapa[]            // ORDEN HACIA ATRÁS: tablas[0] es la ÚLTIMA etapa
+  politicaOptima: DecisionOptima[] // orden hacia adelante: etapa 1 → n
+  rutaOptima: string[] | null     // solo RUTA_ETAPAS
+  definicionEtapas: string
+  definicionEstados: string
+  definicionDecisiones: string
+  funcionRecurrencia: string
+  principioOptimalidad: string
+  interpretacionPolitica: string
+}
+
+// datos de un paso de PD. Discrimina por qué clave trae:
+//   `etapas`  → paso de formulación (siempre el nº 1)
+//   `tabla`   → paso de etapa
+//   `politica`→ paso de recuperación (siempre el último)
+export interface DinamicaStepDatos {
+  tipo: 'PROGRAMACION_DINAMICA'
+  metodo: MetodoDinamico
+  // paso de formulación
+  etapas?: string
+  estados?: string
+  decisiones?: string
+  recurrencia?: string
+  principioOptimalidad?: string
+  // paso de etapa
+  tabla?: TablaEtapa
+  // paso de recuperación
+  politica?: DecisionOptima[]
+  valorOptimo?: number
+  rutaOptima?: string[]
+}
+
+export interface SolveStepDinamica {
+  numero: number
+  titulo: string
+  descripcion: string
+  datos: DinamicaStepDatos
+}
+
+export interface SolveResultDinamica {
+  status: SolveStatus
+  solution: SolucionDinamica | null // null si INFACTIBLE (ruta sin camino / producción sin capacidad)
+  steps: SolveStepDinamica[]        // vienen igual con INFACTIBLE: explican por qué
 }

@@ -5,6 +5,7 @@ import { TransporteWorkspace } from '@/pages/transporte/TransporteWorkspace'
 import { RedesWorkspace } from '@/pages/redes/RedesWorkspace'
 import { EnteraWorkspace } from '@/pages/entera/EnteraWorkspace'
 import { InventarioWorkspace } from '@/pages/inventario/InventarioWorkspace'
+import { DinamicaWorkspace } from '@/pages/dinamica/DinamicaWorkspace'
 
 export default function App() {
   return (
@@ -16,6 +17,7 @@ export default function App() {
         <Route path="/redes" element={<RedesWorkspace />} />
         <Route path="/pl-entera" element={<EnteraWorkspace />} />
         <Route path="/inventario" element={<InventarioWorkspace />} />
+        <Route path="/dinamica" element={<DinamicaWorkspace />} />
       </Route>
     </Routes>
   )

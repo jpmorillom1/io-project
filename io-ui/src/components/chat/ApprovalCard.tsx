@@ -2,8 +2,8 @@ import { useState, type CSSProperties } from 'react'
 import { Button } from '@/components/ui/button'
 import { Check, X, ShieldQuestion } from 'lucide-react'
 import type {
-  SolicitudAprobacion, ModeloLP, ModeloTransporte, ModeloRed, ModeloEntero, ModeloInventario,
-  MetodoResolucion, MetodoTransporte, MetodoRed, MetodoInventario, TipoRestriccion, TipoVariable,
+  SolicitudAprobacion, ModeloLP, ModeloTransporte, ModeloRed, ModeloEntero, ModeloInventario, ModeloDinamico,
+  MetodoResolucion, MetodoTransporte, MetodoRed, MetodoInventario, MetodoDinamico, TipoRestriccion, TipoVariable,
 } from '@/types/io'
 
 interface Props {
@@ -21,6 +21,15 @@ const METODO_LABEL: Record<MetodoResolucion, string> = {
   REDES: 'Redes',
   BRANCH_AND_BOUND: 'Branch & Bound',
   INVENTARIO: 'Inventarios',
+  PROGRAMACION_DINAMICA: 'Programación Dinámica',
+}
+
+const METODO_DINAMICA_LABEL: Record<MetodoDinamico, string> = {
+  ASIGNACION_RECURSOS: 'Asignación de recursos',
+  MOCHILA: 'Mochila',
+  RUTA_ETAPAS: 'Ruta por etapas',
+  PLANIFICACION_PRODUCCION: 'Planificación de producción',
+  REEMPLAZO_EQUIPOS: 'Reemplazo de equipos',
 }
 
 const TIPO_VAR_LABEL: Record<TipoVariable, string> = {
@@ -229,6 +238,62 @@ function ResumenInventario({ modelo }: { modelo: ModeloInventario }) {
   )
 }
 
+/** Resumen de un modelo de Programación Dinámica para la tarjeta de aprobación. */
+function ResumenDinamica({ modelo }: { modelo: ModeloDinamico }) {
+  switch (modelo.metodo) {
+    case 'ASIGNACION_RECURSOS':
+      return (
+        <>
+          <p><span style={{ color: 'var(--ij-text-secondary)' }}>Recurso total = </span>{modelo.recursoTotal}</p>
+          {(modelo.actividades ?? []).map((a, i) => (
+            <p key={i}><span style={{ color: 'var(--ij-purple)' }}>{a.nombre}</span>: [{a.retornos.join(', ')}]</p>
+          ))}
+        </>
+      )
+    case 'MOCHILA':
+      return (
+        <>
+          <p><span style={{ color: 'var(--ij-text-secondary)' }}>Capacidad = </span>{modelo.capacidad}</p>
+          {(modelo.articulos ?? []).map((a, i) => (
+            <p key={i}>
+              <span style={{ color: 'var(--ij-purple)' }}>{a.nombre}</span>: peso {a.peso}, valor {a.valor}
+              {a.unidadesMaximas != null ? ` (máx ${a.unidadesMaximas})` : ''}
+            </p>
+          ))}
+        </>
+      )
+    case 'RUTA_ETAPAS':
+      return (
+        <>
+          <p style={{ color: 'var(--ij-text-secondary)' }}>{(modelo.etapasRuta ?? []).length} etapas · {(modelo.arcos ?? []).length} arcos</p>
+          {(modelo.etapasRuta ?? []).map((e, i) => (
+            <p key={i}><span style={{ color: 'var(--ij-teal)' }}>Etapa {e.etapa}</span>: {e.nodos.join(', ')}</p>
+          ))}
+        </>
+      )
+    case 'PLANIFICACION_PRODUCCION':
+      return (
+        <>
+          <p><span style={{ color: 'var(--ij-text-secondary)' }}>Demandas = </span>[{(modelo.demandas ?? []).join(', ')}]</p>
+          <p style={{ color: 'var(--ij-text-secondary)' }}>
+            K={modelo.costoPreparacion} · c={modelo.costoUnitarioProduccion} · h={modelo.costoMantener}
+          </p>
+        </>
+      )
+    case 'REEMPLAZO_EQUIPOS':
+      return (
+        <>
+          <p style={{ color: 'var(--ij-text-secondary)' }}>
+            Horizonte {modelo.horizonteAnios} años · edad máx {modelo.edadMaxima} · compra {modelo.costoCompra}
+          </p>
+          <p style={{ color: 'var(--ij-text-secondary)' }}>{(modelo.tablaEdades ?? []).length} filas de edad</p>
+        </>
+      )
+    default:
+      return <p style={{ color: 'var(--ij-text-secondary)' }}>Modelo de programación dinámica</p>
+  }
+}
+
 /**
  * Tarjeta Human-in-the-Loop: el tutor quiere ejecutar un solver y espera la
  * decisión del estudiante. Rechazar pide un comentario que re-alimenta al tutor.
@@ -245,13 +310,17 @@ export function ApprovalCard({ solicitud, onDecidir, disabled }: Props) {
   const modeloE = esEntero ? (solicitud.modelo as ModeloEntero) : null
   const esInventario = solicitud.metodo === 'INVENTARIO'
   const modeloI = esInventario ? (solicitud.modelo as ModeloInventario) : null
+  const esDinamica = solicitud.metodo === 'PROGRAMACION_DINAMICA'
+  const modeloD = esDinamica ? (solicitud.modelo as ModeloDinamico) : null
   const etiquetaMetodo = modeloT
     ? `Transporte · ${METODO_TRANSPORTE_LABEL[modeloT.metodo]}`
     : modeloR
       ? `Redes · ${METODO_RED_LABEL[modeloR.metodo]}`
       : modeloI && modeloI.metodo
         ? `Inventarios · ${METODO_INVENTARIO_LABEL[modeloI.metodo]}`
-        : METODO_LABEL[solicitud.metodo]
+        : modeloD && modeloD.metodo
+          ? `PD · ${METODO_DINAMICA_LABEL[modeloD.metodo]}`
+          : METODO_LABEL[solicitud.metodo]
 
   return (
     <div
@@ -286,6 +355,8 @@ export function ApprovalCard({ solicitud, onDecidir, disabled }: Props) {
           <ResumenEntero modelo={modeloE} />
         ) : modeloI ? (
           <ResumenInventario modelo={modeloI} />
+        ) : modeloD ? (
+          <ResumenDinamica modelo={modeloD} />
         ) : (
           lineasModelo(solicitud.modelo as ModeloLP).map((linea, i) => (
             <p key={i} className={i === 0 ? 'font-semibold' : undefined}>

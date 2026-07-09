@@ -4,6 +4,7 @@ import type {
   ModeloRed, SolveResultRed, MetodoRed,
   ModeloEntero, SolveResultEntera,
   ModeloInventario, SolveResultInventario, MetodoInventario,
+  ModeloDinamico, SolveResultDinamica, MetodoDinamico,
 } from '@/types/io'
 
 const API_BASE = 'http://localhost:8080/api/v1'
@@ -107,6 +108,26 @@ export async function resolverInventario(
   modelo: ModeloInventario
 ): Promise<SolveResultInventario> {
   const res = await fetch(`${API_BASE}/inventario/${RUTA_INVENTARIO[metodo]}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(modelo),
+  })
+  return handleResponse(res)
+}
+
+const RUTA_DINAMICA: Record<MetodoDinamico, string> = {
+  ASIGNACION_RECURSOS: 'asignacion-recursos',
+  MOCHILA: 'mochila',
+  RUTA_ETAPAS: 'ruta-etapas',
+  PLANIFICACION_PRODUCCION: 'planificacion-produccion',
+  REEMPLAZO_EQUIPOS: 'reemplazo-equipos',
+}
+
+export async function resolverDinamica(
+  metodo: MetodoDinamico,
+  modelo: ModeloDinamico
+): Promise<SolveResultDinamica> {
+  const res = await fetch(`${API_BASE}/dinamica/${RUTA_DINAMICA[metodo]}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(modelo),

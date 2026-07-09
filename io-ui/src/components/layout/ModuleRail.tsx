@@ -14,7 +14,7 @@ const MODULOS: Modulo[] = [
   { id: 'transporte', label: 'Transporte', icon: Truck, path: '/transporte', disponible: true },
   { id: 'redes', label: 'Redes', icon: Network, path: '/redes', disponible: true },
   { id: 'pl-entera', label: 'PL Entera', icon: Binary, path: '/pl-entera', disponible: true },
-  { id: 'prog-din', label: 'Programación Dinámica', icon: Workflow, path: '/prog-din', disponible: false },
+  { id: 'prog-din', label: 'Programación Dinámica', icon: Workflow, path: '/dinamica', disponible: true },
   { id: 'inventario', label: 'Inventarios', icon: Package, path: '/inventario', disponible: true },
 ]
 
