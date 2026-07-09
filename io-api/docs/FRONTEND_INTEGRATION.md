@@ -1413,6 +1413,7 @@ interface DecisionAprobacionRequest {
   solicitudId: string
   aprobado: boolean
   comentario: string | null   // en un rechazo, explica qué corregir (re-alimenta al tutor)
+  modeloModificado?: unknown | null // si se aprueba, envía el JSON actual del formulario UI para sobrescribir y resolver con concordancia 100%
 }
 
 interface ModeloSugeridoResponse {

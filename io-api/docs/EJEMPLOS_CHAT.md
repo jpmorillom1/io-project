@@ -1,192 +1,262 @@
-# Ejemplos de prompts para el chat (tutor Pivot)
+# Ejemplos de Prompts Happy Path para el Chat (Tutor IA Pivot — Caso Cervecería Nacional)
 
-> Colección de enunciados tipo ejercicio, listos para pegar en el chat, que hacen que el tutor
-> formule el modelo y —tras la aprobación humana (HITL)— lo resuelva.
+> Colección exhaustiva de enunciados listos para copiar y pegar en el chat interactivo, diseñados para validar el funcionamiento **Happy Path** de los seis módulos de Investigación Operativa implementados en la plataforma.
 >
-> **Cómo funciona el flujo (dos turnos):** al enviar el mensaje, el tutor identifica el modelo y
-> muestra una tarjeta **Aprobar / Rechazar**. El solver **solo corre al pulsar Aprobar**. Si el tutor
-> pide confirmar el modelo antes, responde algo como *"sí, está correcto, resuélvelo"*.
+> **Tema de negocio unificado:** Todos los ejercicios están ambientados en la operación real de **Cervecería Nacional** (plantas cerveceras en Cumbayá y Guayaquil, marcas emblemáticas como *Pilsener* y *Club Premium*, centros de distribución, líneas de embotellado, inventario de lúpulo/botellas y logística vial en Ecuador).
 >
-> Los resultados esperados están tomados de los tests del backend, así que son exactos y sirven para
-> verificar que el chat resuelve bien.
-
-> **Estado de este documento:** cubre **Programación Dinámica** y **PL Entera (Branch & Bound)**.
-> Se irá ampliando con los tipos de problema y ejemplos de los demás métodos (LP, Transporte, Redes,
-> Inventarios).
+> **Cómo ejecutar en el chat:**
+> 1. Copia cualquiera de los bloques **Prompt listo para pegar** y envíalo en el chat.
+> 2. El agente clasificador semántico identificará automáticamente el módulo (`PL`, `TRANSPORTE`, `REDES`, `ENTERA`, `DINAMICA`, `INVENTARIO`) y sugerirá la formulación matemática con una tarjeta interactiva **Aprobar / Rechazar**.
+> 3. Pulsa **"Aprobar"** (o confirma en el chat) para ejecutar el solver y ver los pasos detallados junto con la explicación socrática.
 
 ---
 
-## Módulo: Programación Dinámica (determinística)
-
-Cinco submodelos. El tutor elige la herramienta según las palabras clave del enunciado (etapas,
-capacidad limitada, demanda por periodo, edad del equipo, repartir un recurso…).
-
-| # | Submodelo | Herramienta que invoca el tutor | Señal en el enunciado |
-|---|-----------|----------------------------------|------------------------|
-| 1 | Asignación de recursos | `resolverPdAsignacionRecursos` | repartir un recurso entero entre actividades/periodos, con tabla de retornos |
-| 2 | Mochila | `resolverPdMochila` | capacidad limitada + ítems con consumo y beneficio |
-| 3 | Ruta por etapas | `resolverPdRutaEtapas` | red organizada en etapas, ir de origen a destino |
-| 4 | Planificación de producción | `resolverPdPlanificacionProduccion` | demanda conocida **por periodo**, sin faltantes |
-| 5 | Reemplazo de equipos | `resolverPdReemplazoEquipos` | conservar o reemplazar cada año, datos según la edad |
+## Índice Rápido de Módulos
+1. [Programación Lineal Continua (LP)](#1-módulo-programación-lineal-continua-lp)
+2. [Transporte](#2-módulo-transporte)
+3. [Redes sobre Grafos](#3-módulo-redes-sobre-grafos)
+4. [Programación Lineal Entera (Branch & Bound)](#4-módulo-programación-lineal-entera-branch--bound)
+5. [Programación Dinámica Determinística](#5-módulo-programación-dinámica-determinística)
+6. [Gestión de Inventarios Deterministas](#6-módulo-gestión-de-inventarios-deterministas)
 
 ---
 
-### 1. Asignación de recursos
+## 1. Módulo: Programación Lineal Continua (LP)
 
-Repartir un recurso entero entre actividades cuando el retorno viene en **tabla** (no como fórmula lineal).
+Resuelve problemas algebraicos de optimización continua mediante **Simplex Estándar**, **Dos Fases**, **Gran M** y **Método Gráfico** (para 2 variables).
 
-**Prompt:**
+### 1.1 Optimización de Mezcla de Producción (Pilsener vs. Club Premium)
+- **Método sugerido:** Simplex Estándar / Método Gráfico (2 variables).
+- **Escenario:** Maximizar la ganancia semanal en la planta de Cumbayá respetando la capacidad de las áreas de cocción y envasado.
 
-> Tengo **2 unidades** de presupuesto (en millones) para repartir entre dos proyectos, A y B. El retorno depende de cuántas unidades le asigne a cada uno:
-> - Proyecto A: 0 unidades → 0, 1 unidad → 4, 2 unidades → 6
-> - Proyecto B: 0 unidades → 0, 1 unidad → 3, 2 unidades → 8
->
-> Quiero maximizar el retorno total. Modélalo por programación dinámica y **resuélvelo**.
+#### Prompt listo para pegar:
+```text
+En la planta de Cervecería Nacional en Cumbayá producimos lotes de cerveza Pilsener (x1) y Club Premium (x2). Cada lote de Pilsener genera una ganancia de 300 dólares y requiere 2 horas de cocción y 2 horas de envasado. Cada lote de Club Premium genera 400 dólares y requiere 3 horas de cocción y 1 hora de envasado. Disponemos como máximo de 120 horas para cocción y 80 horas para envasado a la semana. Formula el modelo de programación lineal continua para maximizar la ganancia total y resuélvelo por Simplex.
+```
 
-**Resultado esperado:** asignar **0 a A y 2 a B**, retorno total **8**.
-
----
-
-### 2. Mochila
-
-Seleccionar ítems que consumen una capacidad limitada, maximizando el beneficio total.
-
-**Prompt:**
-
-> Una mochila soporta **5 kg**. Tengo tres artículos, cada uno se lleva o no se lleva:
-> - A: peso 2, valor 3
-> - B: peso 3, valor 4
-> - C: peso 4, valor 5
->
-> Quiero maximizar el valor total sin pasarme del peso. Resuélvelo por programación dinámica.
-
-**Resultado esperado:** llevar **A + B** (peso 5), valor **7** (no C, aunque sea el de mayor valor unitario).
+- **Formulación matemática:**
+  - $\max Z = 300x_1 + 400x_2$
+  - Sujeto a:
+    - $2x_1 + 3x_2 \le 120$ *(Horas de cocción)*
+    - $2x_1 + x_2 \le 80$ *(Horas de envasado)*
+    - $x_1, x_2 \ge 0$
+- **Resultado esperado:**
+  - **Solución óptima:** $x_1 = 30$ lotes de Pilsener, $x_2 = 20$ lotes de Club Premium.
+  - **Valor óptimo ($Z$):** **$17,000** de ganancia máxima.
 
 ---
 
-### 3. Ruta por etapas (problema de la diligencia)
+### 1.2 Cumplimiento de Contrato Mínimo de Distribución (Dos Fases)
+- **Método sugerido:** Método de las Dos Fases (restricciones con $\ge$).
+- **Escenario:** Minimizar costos operativos garantizando entregas mínimas contractuales a cadenas minoristas.
 
-Ir de un origen a un destino atravesando una columna de nodos por etapa, minimizando el total acumulado.
+#### Prompt listo para pegar:
+```text
+Cervecería Nacional debe cumplir un contrato mínimo de abastecimiento produciendo cerveza Pilsener (x1) y Club Premium (x2). El costo unitario de producción es de 50 dólares por hectolitro de Pilsener y 80 dólares por hectolitro de Club Premium. Por contrato debemos producir en total al menos 100 hectolitros entre ambas marcas (x1 + x2 >= 100), y por demanda del segmento premium al menos 30 hectolitros deben ser de Club Premium (x2 >= 30). Formula el modelo para minimizar el costo total de producción y resuélvelo por el Método de Dos Fases.
+```
 
-**Prompt:**
-
-> Debo ir del nodo **A** al nodo **J** cruzando una red por etapas, minimizando la distancia:
-> - Etapa 1: A · Etapa 2: B, C, D · Etapa 3: E, F, G · Etapa 4: H, I · Etapa 5: J
-> - Arcos (origen→destino: costo): A→B 2, A→C 4, A→D 3; B→E 7, B→F 4, B→G 6; C→E 3, C→F 2, C→G 4; D→E 4, D→F 1, D→G 5; E→H 1, E→I 4; F→H 6, F→I 3; G→H 3, G→I 3; H→J 3, I→J 4.
->
-> Encuentra la ruta más corta con programación dinámica y **resuélvela**.
-
-**Resultado esperado:** ruta **A–C–E–H–J** con costo **11**.
-
-> Nota: si el grafo NO estuviera organizado en etapas (arcos que saltan libremente entre nodos), el
-> tutor debería usar Redes (Dijkstra), no ruta por etapas.
+- **Resultado esperado:**
+  - **Solución óptima:** $x_1 = 70$ hectolitros de Pilsener, $x_2 = 30$ hectolitros de Club Premium.
+  - **Costo mínimo ($Z$):** $50(70) + 80(30) =$ **$5,900**.
 
 ---
 
-### 4. Planificación de producción
+## 2. Módulo: Transporte
 
-Decidir cuánto producir en cada periodo para cubrir una demanda conocida **por periodo**, sin faltantes,
-al mínimo costo total (preparación + producción + inventario).
+Resuelve la distribución equilibrada desde plantas hacia centros de distribución utilizando **Esquina Noroeste**, **Costo Mínimo**, **Vogel (VAM)** y **MODI**.
 
-**Prompt:**
+### 2.1 Logística de Despacho Nacional (Plantas Guayaquil y Quito)
+- **Escenario:** Minimizar el costo de flete terrestre desde dos plantas productoras hacia tres centros de distribución en Ecuador.
 
-> Debo planificar la producción de 3 periodos con demandas de **3, 2 y 4** unidades. Preparar un lote cuesta **$3** (fijo, cada periodo que produzco), producir una unidad cuesta **$1**, y mantener una unidad en inventario de un periodo al siguiente cuesta **$1**. No se permiten faltantes. Minimiza el costo total con programación dinámica — **resuélvelo**.
+#### Prompt listo para pegar:
+```text
+Cervecería Nacional distribuye camiones con cerveza desde sus plantas en Guayaquil (oferta disponible de 350 camiones) y Quito (oferta disponible de 250 camiones) hacia tres Centros de Distribución: CD-Norte (demanda 200 camiones), CD-Sur (demanda 250 camiones) y CD-Cuenca (demanda 150 camiones). Los costos de flete por camión en dólares son: desde Guayaquil hacia CD-Norte 15, CD-Sur 10, CD-Cuenca 12; y desde Quito hacia CD-Norte 8, CD-Sur 14, CD-Cuenca 18. Formula el problema de transporte y resuélvelo para encontrar la distribución de costo mínimo.
+```
 
-**Resultado esperado:** plan **5, 0, 4** (producir 5 en el periodo 1, nada en el 2, 4 en el 3), costo total **$17**.
+- **Tabla de Costos Unitarios y Balance:**
+  | Origen \ Destino | CD-Norte | CD-Sur | CD-Cuenca | Oferta |
+  |---|---|---|---|---|
+  | **Planta Guayaquil** | $15 | $10 | $12 | 350 |
+  | **Planta Quito** | $8 | $14 | $18 | 250 |
+  | **Demanda** | 200 | 250 | 150 | **Total: 600** |
 
-> Nota: si la demanda fuera **constante** y solo se pidiera la cantidad económica de pedido, sería
-> Inventarios (EOQ), no programación dinámica.
-
----
-
-### 5. Reemplazo de equipos
-
-Cada año, conservar la máquina actual o venderla por su rescate y comprar una nueva, maximizando el
-ingreso neto del horizonte.
-
-**Prompt:**
-
-> Tengo una máquina **nueva** y un horizonte de **2 años**. Una máquina nueva cuesta **$10**. Según la edad del equipo (ingreso anual, costo de operación, valor de rescate):
-> - Edad 0: ingreso 20, operación 2, rescate 8
-> - Edad 1: ingreso 18, operación 4, rescate 6
-> - Edad 2: ingreso 15, operación 8, rescate 3 (edad máxima)
->
-> Cada año decido conservar o reemplazar, maximizando el ingreso neto. Resuélvelo por programación dinámica.
-
-**Resultado esperado:** **Conservar** el año 1 y **Reemplazar** el año 2, ingreso neto máximo **$38**.
+- **Resultado esperado (Asignación Óptima):**
+  - **Desde Quito:** 200 camiones a CD-Norte + 50 camiones a CD-Sur.
+  - **Desde Guayaquil:** 200 camiones a CD-Sur + 150 camiones a CD-Cuenca.
+  - **Costo total mínimo:** $200(8) + 50(14) + 200(10) + 150(12) =$ **$6,100**.
 
 ---
 
-## Módulo: Programación Lineal Entera (Branch & Bound)
+## 3. Módulo: Redes sobre Grafos
 
-Una sola herramienta (`resolverEntera`). El tutor la invoca cuando una o más variables **no
-pueden tomar valores fraccionarios**: **enteras** (cantidades indivisibles) o **binarias**
-(decisiones sí/no). Comunica la integralidad con dos listas de nombres: `variablesEnteras` y
-`variablesBinarias` (lo que no aparezca en ninguna se trata como continua).
+Analiza grafos viales y de infraestructura mediante **Dijkstra** (ruta más corta), **Kruskal** (árbol de expansión mínima) y **Edmonds-Karp** (flujo máximo).
 
-| Señal en el enunciado | Tipo de variable |
-|------------------------|------------------|
-| "elegir / seleccionar", "abrir o no", "comprar o no", "sí/no", "0 o 1" | **binaria** |
-| "número entero de", "cantidades indivisibles", "cuántas máquinas/personas/camiones" | **entera** |
+### 3.1 Ruta Logística de Reparto Más Corta (Dijkstra)
+- **Escenario:** Determinar el recorrido de mínima distancia por carretera para un tráiler cervecero de Guayaquil a Quito.
 
-Además del óptimo, el resultado trae el **valor de la relajación LP** y la **brecha de
-integralidad**: sirven para explicar por qué no basta con redondear la relajación.
+#### Prompt listo para pegar:
+```text
+Un tráiler repartidor de Cervecería Nacional debe viajar desde la Planta Guayaquil (nodo Origen) hasta el Megacentro Quito (nodo Destino) recorriendo la red vial del Ecuador. Los nodos intermedios son Babahoyo, Santo Domingo y Ambato. Las distancias por carretera en kilómetros son: Guayaquil->Babahoyo (60), Guayaquil->Ambato (280), Babahoyo->Santo Domingo (190), Ambato->Quito (130), Santo Domingo->Quito (120). Encuentra la ruta más corta en kilómetros usando teoría de redes (Dijkstra) y resuélvela.
+```
 
----
-
-### 1. Selección de proyectos (binaria)
-
-Elegir un subconjunto de proyectos bajo un presupuesto, maximizando el valor total (mochila 0/1).
-
-**Prompt:**
-
-> Una empresa evalúa **4 proyectos** y tiene un presupuesto de **10** (miles de $). Cada proyecto se hace completo o no se hace (no hay medios proyectos):
-> - Proyecto A: cuesta 5, VPN 8
-> - Proyecto B: cuesta 4, VPN 5
-> - Proyecto C: cuesta 3, VPN 4
-> - Proyecto D: cuesta 2, VPN 3
->
-> Quiero elegir qué proyectos ejecutar para maximizar el VPN total sin pasarme del presupuesto. Resuélvelo con Branch & Bound.
-
-**Modelo:** variables **binarias** A, B, C, D; `MAX 8A+5B+4C+3D` s.a. `5A+4B+3C+2D ≤ 10`.
-
-**Resultado esperado:** ejecutar **A + C + D** (coste 10), VPN total **15**. La relajación LP y el
-óptimo coinciden aquí (brecha 0): el reto es la combinatoria, no la fraccionalidad.
+- **Resultado esperado:**
+  - **Ruta óptima:** `Guayaquil` $\to$ `Babahoyo` $\to$ `Santo Domingo` $\to$ `Quito`.
+  - **Distancia mínima:** $60 + 190 + 120 =$ **370 km**.
 
 ---
 
-### 2. Compra de equipos (entera general)
+### 3.2 Flujo Máximo en Tuberías de Cocción Cerveceras (Edmonds-Karp)
+- **Escenario:** Determinar la capacidad máxima de trasiego de mosto entre tanques de elaboración por hora.
 
-Decidir cuántas máquinas de cada tipo comprar (cantidades enteras) para maximizar la producción.
+#### Prompt listo para pegar:
+```text
+En la planta cervecera tenemos una red de tuberías de acero inoxidable para trasegar mosto desde el Tanque de Cocción (Origen) hasta la Línea de Embotellado (Destino) pasando por los nodos Filtro y Fermentador. Las capacidades máximas de flujo en hectolitros por hora son: Cocción->Filtro (50), Cocción->Fermentador (40), Filtro->Fermentador (15), Filtro->Embotellado (30), Fermentador->Embotellado (60). Calcula el flujo máximo de cerveza por hora usando el algoritmo de Edmonds-Karp.
+```
 
-**Prompt:**
-
-> Un taller quiere comprar máquinas de dos tipos. Cada máquina **tipo A** cuesta 4 (mil $) y produce 30 piezas/día; cada **tipo B** cuesta 3 y produce 20 piezas/día. El presupuesto es **25** (mil $) y hay espacio para **7** máquinas como máximo. El número de máquinas debe ser entero. Maximiza la producción diaria. Resuélvelo por programación entera.
-
-**Modelo:** variables **enteras** x1 (tipo A), x2 (tipo B); `MAX 30x1+20x2` s.a. `4x1+3x2 ≤ 25`, `x1+x2 ≤ 7`.
-
-**Resultado esperado:** producción máxima **180 piezas/día** (con **6 tipo A y 0 tipo B**, o
-equivalentemente **4 tipo A y 3 tipo B** — hay óptimos múltiples). La **relajación LP da 187.5**
-(comprar 6.25 tipo A), así que hay ramificación y una **brecha de integralidad de 7.5**: redondear
-6.25 → 6 casualmente funciona aquí, pero el solver lo demuestra en vez de asumirlo.
+- **Resultado esperado:**
+  - **Flujo Máximo:** **85 hectolitros por hora** saturando las líneas de embotellado.
 
 ---
 
-### 3. Apertura de centros de distribución (binaria)
+## 4. Módulo: Programación Lineal Entera (Branch & Bound)
 
-Elegir en qué ubicaciones abrir un centro (decisión sí/no) bajo presupuesto, maximizando cobertura.
+Resuelve problemas combinatorios donde las variables de decisión representan decisiones indivisibles (**Enteras** $\mathbb{Z}^+$) o selecciones **Binarias** ($0$ o $1$).
 
-**Prompt:**
+### 4.1 Portafolio de Inversión en Tecnologías Cerveceras (Mochila Binaria 0/1 con Ramificación Múltiple)
+- **Escenario:** Seleccionar proyectos indivisibles bajo un presupuesto estricto de 10 millones que obligue a ramificar en el árbol Branch & Bound.
 
-> Una cadena decide en cuáles de **3 ciudades** abrir un centro de distribución. Abrir en el **Norte** cuesta 6 y cubre 40 mil clientes; en el **Centro** cuesta 5 y cubre 35 mil; en el **Sur** cuesta 4 y cubre 30 mil. El presupuesto total es **9**. Cada centro se abre o no se abre. Maximiza la cobertura de clientes. Resuélvelo con Branch & Bound.
+#### Prompt listo para pegar:
+```text
+Cervecería Nacional evalúa 3 proyectos estratégicos indivisibles (variables binarias 0 o 1) con un presupuesto total de 10 millones de dólares:
+- Proyecto 1 (Línea automatizada Cumbayá): costo 6 millones, Retorno VPN 10 millones
+- Proyecto 2 (Tanques de maduración Guayaquil): costo 5 millones, Retorno VPN 8 millones
+- Proyecto 3 (Sistema de cogeneración energética): costo 5 millones, Retorno VPN 7 millones
+Maximiza el retorno VPN total respetando el presupuesto de 10 millones usando Programación Lineal Entera (Branch & Bound) y resuélvelo.
+```
 
-**Modelo:** variables **binarias** N, C, S; `MAX 40N+35C+30S` s.a. `6N+5C+4S ≤ 9`.
-
-**Resultado esperado:** abrir **Centro + Sur** (coste 9), cobertura **65 mil** clientes (abrir el
-Norte, aunque cubra más solo, no cabe en el presupuesto junto a otro).
+- **Comportamiento del Árbol Branch & Bound:**
+  - **Relajación Continua (Nodo 0):** Selecciona el Proyecto 1 ($x_1=1$) y una fracción del Proyecto 2 ($x_2=0.8$), obteniendo un VPN fraccionario de **$16.4 millones**.
+  - **Ramificación:** Al ser $x_2=0.8$ fraccionario, el solver ramifica en dos subproblemas ($x_2=0$ y $x_2=1$), generando múltiples nodos y podando soluciones no enteras.
+- **Resultado Entero Óptimo:**
+  - **Proyectos seleccionados:** **Proyecto 2 + Proyecto 3** ($x_1=0, x_2=1, x_3=1$, costo $5+5=10$ millones).
+  - **Retorno VPN máximo:** **$15 millones**.
 
 ---
 
-## Otros módulos
+### 4.2 Compra de Reactores de Fermentación Indivisibles (Variables Enteras Generales con Ramificación)
+- **Escenario:** Determinar el número exacto de reactores a instalar donde la intersección continua cae en coordenadas decimales.
 
-_(pendiente de completar: LP · Transporte · Redes · Inventarios)_
+#### Prompt listo para pegar:
+```text
+Cervecería Nacional desea adquirir reactores de fermentación de dos marcas. Cada reactor Marca A genera $8 (miles) de utilidad diaria, requiere 1 hora de instalación y cuesta $9 (miles). Cada reactor Marca B genera $5 (miles) de utilidad diaria, requiere 1 hora de instalación y cuesta $5 (miles). Se dispone de un máximo de 6 horas de instalación y un presupuesto de $45 (miles). La cantidad de reactores debe ser estrictamente entera. Maximiza la utilidad diaria por Programación Lineal Entera y resuélvelo.
+```
+
+- **Comportamiento del Árbol Branch & Bound:**
+  - **Relajación Continua (Nodo 0):** Arroja $x_1=3.75$ reactores A y $x_2=2.25$ reactores B con utilidad $Z=41.25$ (fraccionario).
+  - **Ramificación:** El solver genera ramas sobre $x_1 \le 3$ y $x_1 \ge 4$, explorando varios nodos intermedios.
+- **Resultado Entero Óptimo:**
+  - **Solución entera óptima:** **5 reactores Marca A y 0 reactores Marca B** ($x_1=5, x_2=0$).
+  - **Utilidad diaria máxima:** **$40 (miles)**.
+
+---
+
+## 5. Módulo: Programación Dinámica Determinística
+
+Resuelve optimización secuencial por etapas aplicando el **Principio de Optimalidad de Bellman**.
+
+### 5.1 Planificación Trimestral de Producción Cervecera (Sin Faltantes)
+- **Escenario:** Equilibrar costos de preparación de lote, producción continua e inventario de cerveza.
+
+#### Prompt listo para pegar:
+```text
+En Cervecería Nacional debemos planificar por Programación Dinámica por etapas la producción de cerveza Club Premium para las etapas de los próximos 3 meses, cuyas demandas por etapa son 3, 2 y 4 lotes respectivamente. En cada etapa, el costo fijo de arrancar la línea de cocción es de $3 (miles), producir cada lote cuesta $1 (mil), y mantener un lote de excedente entre una etapa y la siguiente cuesta $1 (mil). No se permiten faltantes. Determina el plan de producción óptimo por etapa usando Programación Dinámica para minimizar el costo total y resuélvelo.
+```
+
+- **Resultado esperado:**
+  - **Plan óptimo por mes:** Producir **5 lotes en Mes 1**, **0 lotes en Mes 2** y **4 lotes en Mes 3**.
+  - **Costo total mínimo:** **$17 (miles de dólares)**.
+
+---
+
+### 5.2 Asignación de Equipos Promocionales por Regiones (Recursos Discretos)
+- **Escenario:** Distribuir 2 equipos móviles de degustación entre las regiones Sierra y Costa con retornos no lineales.
+
+#### Prompt listo para pegar:
+```text
+Cervecería Nacional dispone de 2 equipos promocionales de degustación para repartir entre sus regiones de ventas Sierra y Costa. El incremento en ventas (en miles de dólares) según la cantidad entera de equipos asignados es:
+- Región Sierra: 0 equipos -> 0, 1 equipo -> 40, 2 equipos -> 60
+- Región Costa: 0 equipos -> 0, 1 equipo -> 30, 2 equipos -> 80
+Maximiza el incremento total de ventas usando Programación Dinámica y resuélvelo.
+```
+
+- **Resultado esperado:**
+  - **Asignación óptima:** **0 equipos a Sierra y 2 equipos a Costa**.
+  - **Incremento máximo de ventas:** **$80 (miles)**.
+
+---
+
+### 5.3 Ruta Logística Intermodal por Etapas (Problema de la Diligencia)
+- **Escenario:** Determinar la ruta secuencial de mínimo costo para transportar levadura importada desde el puerto hasta la planta principal por etapas intermedias.
+
+#### Prompt listo para pegar:
+```text
+Cervecería Nacional debe transportar un cargamento de levadura por etapas desde Guayaquil (etapa 1) hasta Quito (etapa 4) pasando por ciudades intermedias en las etapas 2 y 3. Las etapas y sus ciudades disponibles son:
+- Etapa 1: Guayaquil
+- Etapa 2: Riobamba, SantoDomingo
+- Etapa 3: Ambato, Latacunga
+- Etapa 4: Quito
+
+Los costos de transporte en cientos de dólares entre nodos de una etapa a la siguiente son:
+- De Guayaquil a Riobamba: 7
+- De Guayaquil a SantoDomingo: 5
+- De Riobamba a Ambato: 3
+- De Riobamba a Latacunga: 4
+- De SantoDomingo a Ambato: 6
+- De SantoDomingo a Latacunga: 5
+- De Ambato a Quito: 3
+- De Latacunga a Quito: 2
+
+Encuentra la ruta secuencial óptima por Programación Dinámica por etapas que minimiza el costo total y resuélvela.
+```
+
+- **Resultado esperado:**
+  - **Ruta óptima por etapas:** **Guayaquil -> SantoDomingo -> Latacunga -> Quito**.
+  - **Costo total mínimo:** **$12 (cientos de dólares)** ($5 + $5 + $2 = $12).
+
+---
+
+## 6. Módulo: Gestión de Inventarios Deterministas
+
+Optimiza niveles de stock, pedidos y costos de almacenamiento utilizando modelos de la familia **EOQ / POQ / ROP**.
+
+### 6.1 Lote Económico de Compra (EOQ Básico para Lúpulo Importado)
+- **Escenario:** Optimizar la importación anual de sacos de lúpulo aromático.
+
+#### Prompt listo para pegar:
+```text
+En Cervecería Nacional consumimos una demanda anual constante de 1000 sacos de lúpulo aromático importado. Colocar una orden de compra internacional tiene un costo fijo de 50 dólares por pedido, y almacenar un saco en nuestra bodega refrigerada tiene un costo de mantenimiento de 10 dólares al año. Calcula el Lote Económico de Compra (EOQ) óptimo, el número anual de pedidos y el costo total mínimo de gestión de inventarios.
+```
+
+- **Cálculo matemático:**
+  - $Q^* = \sqrt{\frac{2 \cdot 1000 \cdot 50}{10}} = \sqrt{10000} = 100 \text{ sacos}$.
+- **Resultado esperado:**
+  - **Lote óptimo ($Q^*$):** **100 sacos de lúpulo por pedido**.
+  - **Frecuencia de pedidos:** **10 pedidos al año** (cada 36.5 días).
+  - **Costo anual de gestión mínimo:** **$1,000**.
+
+---
+
+### 6.2 EOQ con Descuentos por Cantidad para Botellas de Vidrio
+- **Escenario:** Decidir si aprovechar un descuento por volumen al comprar botellas vacías a un proveedor de vidrio.
+
+#### Prompt listo para pegar:
+```text
+Cervecería Nacional adquiere botellas de vidrio de 330ml con una demanda anual constante de 10,000 cajas. El costo de emitir una orden es de 100 dólares y la tasa de mantenimiento es del 20% anual sobre el precio unitario. El proveedor ofrece dos tramos de precio por volumen:
+- Tramo 1 (1 a 999 cajas): Precio de 10 dólares por caja (mantenimiento $2/año).
+- Tramo 2 (1,000 o más cajas): Precio con descuento de 9 dólares por caja (mantenimiento $1.80/año).
+Determina la política óptima de pedido evaluando el modelo de inventarios con descuentos por cantidad y resuélvelo.
+```
+
+- **Resultado esperado:**
+  - **Lote óptimo:** Pedir en lotes de **1,054 cajas** aprovechando el precio con descuento del Tramo 2 ($9/caja).
+  - **Costo total mínimo:** **$91,897.37 anuales** (incluyendo el costo de adquisición de botellas).

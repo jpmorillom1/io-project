@@ -291,9 +291,16 @@ un solver se ejecuta desde el chat: la compuerta es estructural, no depende del 
 {
   "solicitudId": "7c1e...uuid",
   "aprobado": true,
-  "comentario": null
+  "comentario": null,
+  "modeloModificado": {
+    "variables": ["x1", "x2"],
+    "objetivo": { "coeficientes": [10.0, 10.0], "tipo": "MAXIMIZAR" },
+    "restricciones": [...]
+  }
 }
 ```
+
+- **`modeloModificado` (opcional)**: JSON con el modelo actualmente editado y visible en el formulario de la interfaz. Si se envía junto con `aprobado: true`, el backend sobrescribe el modelo que la IA tenía en la solicitud y ejecuta el solver sobre este modelo modificado, garantizando concordancia 100% para cualquier módulo (`PL`, `INVENTARIO`, `TRANSPORTE`, `REDES`, `ENTERA`, `DINAMICA`).
 
 En un rechazo, `comentario` es opcional pero recomendado — el tutor lo usa para corregir:
 ```json

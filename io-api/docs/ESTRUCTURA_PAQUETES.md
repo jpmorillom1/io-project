@@ -100,24 +100,26 @@ io-api/src/main/java/jpap/dev/io_api/
     │   └── TransporteController.java              POST /api/v1/transporte/{esquina-noroeste,costo-minimo,vogel,modi}
     │
     ├── ai/
-    │   ├── TutorAiService.java                    interfaz conversacional (@MemoryId, @UserMessage)
-    │   ├── ModeloAiService.java                   interfaz structured output (extracción + validación)
     │   ├── AiConfig.java                          @Configuration — beans manuales AiServices.builder()
-    │   ├── AiChatController.java                  POST /api/v1/ai/{chat, sugerir-modelo, validar-modelo}
-    │   ├── tools/
-    │   │   ├── SimplexTool.java                   @Tool resolverSimplex(...) — solo LEQ
-    │   │   ├── GranMTool.java                     @Tool resolverGranM(...) — LEQ/GEQ/EQ
-    │   │   └── DosFasesTool.java                  @Tool resolverDosFases(...) — LEQ/GEQ/EQ (default)
-    │   └── dto/
-    │       ├── ChatRequest.java                   record(sesionId, mensaje)
-    │       ├── ChatResponse.java                  record(sesionId, respuesta)
-    │       ├── SugerirModeloRequest.java           record(descripcionProblema)
-    │       ├── ModeloSugeridoResponse.java         record(modelo, razonamiento, supuestos, advertencias)
-    │       ├── ValidarModeloRequest.java           record(descripcionProblema, modelo)
-    │       └── ValidacionResponse.java             record(esValido, analisis, errores, sugerencias, modeloCorregido)
-    │
-    │   ⏳ ai/rag/         (ChromaDB — pendiente)
-    │   ⏳ persistence/    (JPA entities + repositories — pendiente)
+    │   ├── AiChatController.java                  POST /api/v1/ai/{chat, sugerir-modelo, validar-modelo, chat/aprobacion}
+    │   ├── supervisor/
+    │   │   ├── TutorSupervisorService.java        Orquestador principal y enrutador por sesión
+    │   │   └── ModuloClassifierService.java       Clasificador semántico LLM de módulo IO
+    │   ├── subagents/
+    │   │   ├── PlSubAgent.java                    Subagente de Programación Lineal Continua
+    │   │   ├── InventarioSubAgent.java            Subagente de Inventarios
+    │   │   ├── TransporteSubAgent.java            Subagente de Transporte
+    │   │   ├── RedesSubAgent.java                 Subagente de Redes
+    │   │   ├── EnteraSubAgent.java                Subagente de PL Entera
+    │   │   └── DinamicaSubAgent.java              Subagente de Programación Dinámica
+    │   ├── hitl/
+    │   │   ├── AprobacionHumanaService.java       Servicio de compuerta Human-in-the-loop y sincronización de modelo
+    │   │   ├── ResolucionAprobadaWorkflow.java    Agentic workflow para ejecución post-aprobación
+    │   │   └── SolicitudAprobacionRegistry.java   Registro en memoria de solicitudes pendientes
+    │   ├── tools/                                 Herramientas especializadas por subagente (@Tool)
+    │   └── dto/                                   DTOs de peticiones/respuestas del chat y compuerta HITL
+    │   ├── rag/                                   Módulo de recuperación de información (RAG)
+    │   └── persistence/                           Entidades y repositorios JPA
     │
     └── web/
         ├── GlobalExceptionHandler.java            @RestControllerAdvice (400/500)
