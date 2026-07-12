@@ -60,10 +60,11 @@ tasks.withType(JavaCompile).configureEach {
 tasks.named('test') {
 	useJUnitPlatform()
 	finalizedBy tasks.jacocoTestReport
-	// En CI no hay Postgres/Chroma/Groq: -PciSkipContextTests omite el test
-	// que carga el contexto Spring completo (IoApiApplicationTests)
+	// En CI no hay Postgres/Chroma/Groq: -PciSkipContextTests omite los tests
+	// que cargan el contexto Spring completo (IoApiApplicationTests y los *IT)
 	if (project.hasProperty('ciSkipContextTests')) {
 		exclude '**/IoApiApplicationTests*'
+		exclude '**/*IT.class'
 	}
 }
 

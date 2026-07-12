@@ -9,7 +9,7 @@ package jpap.dev.io_api.infrastructure.ai.dto;
  * - comentario:  opcional; en un rechazo explica qué está mal del modelo y
  *                re-alimenta al tutor para proponer la corrección
  */
-import com.fasterxml.jackson.databind.JsonNode;
+import tools.jackson.databind.JsonNode;
 
 public record DecisionAprobacionRequest(
         String solicitudId,

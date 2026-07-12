@@ -61,14 +61,22 @@ interface WorkspaceStore {
   setResultadoDinamica: (r: SolveResultDinamica | null) => void
   setValidado: (v: boolean) => void
   resetResultado: () => void
+  /** Vacía modelos y resultados de TODOS los módulos: al cambiar de conversación. */
+  resetWorkspace: () => void
   setValidacion: (v: ValidacionResponse) => void
   setIsChatBusy: (b: boolean) => void
   setUltimaActualizacionIA: (tipo: ActualizacionIA) => void
 }
 
-export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
-  status: 'IDLE',
-  sesionId: null,
+/**
+ * Todo lo que pertenece a una conversación concreta. Al abrir otra hay que borrarlo:
+ * un resultado de transporte sobreviviendo a un cambio de sesión se pintaría en el
+ * workspace de la nueva.
+ *
+ * Deliberadamente NO incluye sesionId (lo gestiona ChatProvider), isChatBusy ni revisionIA.
+ */
+const ESTADO_DE_CONVERSACION = {
+  status: 'IDLE' as WorkspaceStatus,
   descripcionProblema: '',
   modelo: null,
   erroresValidacion: [],
@@ -88,8 +96,13 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
   modeloDinamico: null,
   resultadoDinamica: null,
   validado: false,
-  isChatBusy: false,
   ultimaActualizacionIA: null,
+}
+
+export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
+  ...ESTADO_DE_CONVERSACION,
+  sesionId: null,
+  isChatBusy: false,
   revisionIA: 0,
 
   setStatus: (status) => set({ status }),
@@ -113,6 +126,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
   setResultadoDinamica: (resultadoDinamica) => set({ resultadoDinamica }),
   setValidado: (validado) => set({ validado }),
   resetResultado: () => set({ resultado: null, resultadoGrafico: null, resultadoTransporte: null, resultadoRed: null, resultadoEntero: null, resultadoInventario: null, resultadoDinamica: null, status: 'EDITING', validado: false }),
+  resetWorkspace: () => set({ ...ESTADO_DE_CONVERSACION }),
   setValidacion: (v) => set({
     erroresValidacion: v.erroresEncontrados,
     sugerenciasValidacion: v.sugerencias,

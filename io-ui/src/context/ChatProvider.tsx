@@ -1,12 +1,30 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
 import { useNavigate, useLocation } from 'react-router'
-import { enviarMensaje, decidirAprobacion } from '@/api/io'
+import { enviarMensaje, decidirAprobacion, obtenerHistorial, listarSesiones, aMensajes } from '@/api/io'
 import { useWorkspaceStore } from '@/store/useWorkspaceStore'
-import type { Mensaje, ChatResponse, SolicitudAprobacion, ModeloTransporte, ModeloRed, ModeloEntero, ModeloInventario, ModeloDinamico } from '@/types/io'
+import type {
+  Mensaje, ChatResponse, SolicitudAprobacion, ModeloLP, SolveResult, SolveResultGrafico,
+  ModeloTransporte, SolveResultTransporte, ModeloRed, SolveResultRed,
+  ModeloEntero, SolveResultEntera, ModeloInventario, SolveResultInventario,
+  ModeloDinamico, SolveResultDinamica,
+  ResumenSesion, HistorialSesion, ProblemaResueltoHistorial, ModuloActivo,
+} from '@/types/io'
 
+// localStorage y no sessionStorage: la conversación vive en PostgreSQL, así que debe
+// sobrevivir a cerrar la pestaña igual que sobrevive a reiniciar el backend.
 const SESSION_KEY = 'io_sesion_id'
 
 type Modulo = 'lp' | 'transporte' | 'redes' | 'pl-entera' | 'inventario' | 'dinamica'
+
+/** Ruta del workspace de cada módulo del backend. Los nombres no coinciden en dos casos. */
+const RUTA_DE_MODULO: Record<ModuloActivo, Modulo> = {
+  PL: 'lp',
+  ENTERA: 'pl-entera',
+  TRANSPORTE: 'transporte',
+  REDES: 'redes',
+  INVENTARIO: 'inventario',
+  DINAMICA: 'dinamica',
+}
 
 interface ChatContextValue {
   mensajes: Mensaje[]
@@ -15,6 +33,12 @@ interface ChatContextValue {
   solicitud: SolicitudAprobacion | null
   isSending: boolean
   error: string | null
+  /** Conversaciones anteriores, la más reciente primero. */
+  sesiones: ResumenSesion[]
+  sesionActivaId: string | null
+  refrescarSesiones: () => Promise<void>
+  abrirSesion: (sesionId: string) => Promise<void>
+  nuevaConversacion: () => void
 }
 
 const ChatContext = createContext<ChatContextValue | null>(null)
@@ -39,6 +63,18 @@ function moduloDeRespuesta(res: ChatResponse): Modulo | null {
   return null
 }
 
+/** Módulo al que pertenece un problema ya resuelto, por su método de resolución. */
+function moduloDeProblema(p: ProblemaResueltoHistorial): Modulo {
+  switch (p.metodo) {
+    case 'TRANSPORTE': return 'transporte'
+    case 'REDES': return 'redes'
+    case 'BRANCH_AND_BOUND': return 'pl-entera'
+    case 'INVENTARIO': return 'inventario'
+    case 'PROGRAMACION_DINAMICA': return 'dinamica'
+    default: return 'lp' // SIMPLEX, GRAN_M, DOS_FASES, GRAFICO
+  }
+}
+
 /**
  * Estado del chat compartido por toda la app. Vive por encima de las rutas
  * (montado en AppShell), de modo que cambiar de workspace NO reinicia la
@@ -50,22 +86,147 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [isSending, setIsSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [solicitud, setSolicitud] = useState<SolicitudAprobacion | null>(null)
+  const [sesiones, setSesiones] = useState<ResumenSesion[]>([])
   const sesionId = useWorkspaceStore(s => s.sesionId)
   const setSesionId = useWorkspaceStore(s => s.setSesionId)
   const store = useWorkspaceStore.getState
   const navigate = useNavigate()
   const location = useLocation()
 
-  useEffect(() => {
-    const stored = sessionStorage.getItem(SESSION_KEY)
-    if (stored) setSesionId(stored)
-  }, [setSesionId])
+  async function refrescarSesiones() {
+    try {
+      setSesiones(await listarSesiones())
+    } catch {
+      // La lista es accesoria: si el backend no responde, el chat sigue funcionando.
+    }
+  }
 
   function irAModulo(modulo: Modulo | null) {
     if (!modulo) return
     if (!location.pathname.startsWith(`/${modulo}`)) {
       navigate(`/${modulo}`)
     }
+  }
+
+  /**
+   * Repuebla el workspace con el último problema que la sesión resolvió. Solo uno de los
+   * seis editores aplica: el que indica el método con el que se resolvió.
+   */
+  function rehidratarWorkspace(p: ProblemaResueltoHistorial) {
+    const s = store()
+    switch (p.metodo) {
+      case 'SIMPLEX':
+      case 'GRAN_M':
+      case 'DOS_FASES':
+        s.setModelo(p.modelo as ModeloLP)
+        s.setResultado(p.resultado as SolveResult)
+        break
+      case 'GRAFICO':
+        s.setModelo(p.modelo as ModeloLP)
+        s.setResultadoGrafico(p.resultado as SolveResultGrafico)
+        break
+      case 'TRANSPORTE':
+        s.setModeloTransporte(p.modelo as ModeloTransporte)
+        s.setResultadoTransporte(p.resultado as SolveResultTransporte)
+        break
+      case 'REDES':
+        s.setModeloRed(p.modelo as ModeloRed)
+        s.setResultadoRed(p.resultado as SolveResultRed)
+        break
+      case 'BRANCH_AND_BOUND':
+        s.setModeloEntero(p.modelo as ModeloEntero)
+        s.setResultadoEntero(p.resultado as SolveResultEntera)
+        break
+      case 'INVENTARIO':
+        s.setModeloInventario(p.modelo as ModeloInventario)
+        s.setResultadoInventario(p.resultado as SolveResultInventario)
+        break
+      case 'PROGRAMACION_DINAMICA':
+        s.setModeloDinamico(p.modelo as ModeloDinamico)
+        s.setResultadoDinamica(p.resultado as SolveResultDinamica)
+        break
+    }
+    s.setStatus('SOLVED')
+  }
+
+  /**
+   * Deja la app plantada en una conversación: transcript en el chat, último resultado en
+   * el workspace y la ruta del módulo que la sesión estaba trabajando.
+   */
+  function restaurar(historial: HistorialSesion) {
+    store().resetWorkspace()
+    setSolicitud(null)   // las solicitudes HITL viven en RAM del backend: no sobreviven
+    setError(null)
+    setSesionId(historial.sesionId)
+    localStorage.setItem(SESSION_KEY, historial.sesionId)
+    setMensajes(aMensajes(historial.mensajes))
+
+    if (historial.ultimoProblema) {
+      rehidratarWorkspace(historial.ultimoProblema)
+      irAModulo(moduloDeProblema(historial.ultimoProblema))
+    } else if (historial.moduloActivo) {
+      irAModulo(RUTA_DE_MODULO[historial.moduloActivo])
+    }
+  }
+
+  // Al montar: la lista de conversaciones y la que quedó abierta la última vez.
+  // Los mensajes viven solo en este estado de React, así que sin esto un F5 los perdía
+  // aunque la conversación siguiera viva en el servidor.
+  useEffect(() => {
+    refrescarSesiones()
+
+    const guardada = localStorage.getItem(SESSION_KEY)
+    if (!guardada) return
+
+    let cancelado = false
+    obtenerHistorial(guardada)
+      .then(historial => {
+        if (cancelado) return
+        if (historial === null) {
+          // El backend ya no conoce la sesión: se descarta y se empieza de cero.
+          localStorage.removeItem(SESSION_KEY)
+          return
+        }
+        restaurar(historial)
+      })
+      .catch(() => {
+        // Backend caído o sin red: conservamos el sesionId, el historial sigue en la BD.
+        if (!cancelado) setSesionId(guardada)
+      })
+
+    return () => { cancelado = true }
+    // Solo al montar: restaurar en cada render reabriría la sesión sobre sí misma.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  /** Abre una conversación anterior desde la barra lateral. */
+  async function abrirSesion(id: string) {
+    if (isSending || id === sesionId) return
+    try {
+      const historial = await obtenerHistorial(id)
+      if (historial === null) {
+        setError('Esa conversación ya no existe.')
+        await refrescarSesiones()
+        return
+      }
+      restaurar(historial)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo abrir la conversación')
+    }
+  }
+
+  /**
+   * Empieza de cero. No crea nada en el backend: la fila de sesión nace con el primer
+   * mensaje, así que un usuario que pulse "nueva" y no escriba no deja basura.
+   */
+  function nuevaConversacion() {
+    if (isSending) return
+    store().resetWorkspace()
+    setSesionId(null)
+    localStorage.removeItem(SESSION_KEY)
+    setMensajes([])
+    setSolicitud(null)
+    setError(null)
   }
 
   function procesarRespuesta(res: ChatResponse) {
@@ -157,18 +318,23 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     setIsSending(true)
     store().setIsChatBusy(true)
     setError(null)
+    const eraNueva = !sesionId
     try {
       const res = await enviarMensaje(sesionId, texto)
-      if (!sesionId) {
+      if (eraNueva) {
         setSesionId(res.sesionId)
-        sessionStorage.setItem(SESSION_KEY, res.sesionId)
+        localStorage.setItem(SESSION_KEY, res.sesionId)
       }
       procesarRespuesta(res)
+      // El primer turno crea la fila de sesión: aparece en la barra lateral con su
+      // título provisional. El definitivo lo escribe el titulador poco después, y lo
+      // recoge el siguiente refresco de la lista.
+      if (eraNueva) refrescarSesiones()
     } catch (e) {
+      // La sesión vive en PostgreSQL: un fallo de red puntual no la invalida.
+      // Conservamos el sesionId para poder reintentar sin perder la conversación.
       const msg = e instanceof Error ? e.message : 'Error de conexión'
       setError(msg)
-      setSesionId(null)
-      sessionStorage.removeItem(SESSION_KEY)
     } finally {
       setIsSending(false)
       store().setIsChatBusy(false)
@@ -194,7 +360,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const value: ChatContextValue = { mensajes, enviar, decidir, solicitud, isSending, error }
+  const value: ChatContextValue = {
+    mensajes, enviar, decidir, solicitud, isSending, error,
+    sesiones, sesionActivaId: sesionId, refrescarSesiones, abrirSesion, nuevaConversacion,
+  }
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>
 }
 

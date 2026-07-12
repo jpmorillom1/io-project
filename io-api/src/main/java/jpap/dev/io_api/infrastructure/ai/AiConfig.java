@@ -1,13 +1,17 @@
 package jpap.dev.io_api.infrastructure.ai;
 
+import dev.langchain4j.memory.chat.ChatMemoryProvider;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.chat.ChatModel;
+import dev.langchain4j.model.openai.OpenAiChatModel;
 import dev.langchain4j.rag.content.retriever.ContentRetriever;
 import dev.langchain4j.service.AiServices;
 import dev.langchain4j.service.tool.ToolErrorHandlerResult;
+import dev.langchain4j.store.memory.chat.ChatMemoryStore;
 import jpap.dev.io_api.infrastructure.ai.subagents.*;
 import jpap.dev.io_api.infrastructure.ai.supervisor.ModuloClassifierService;
 import jpap.dev.io_api.infrastructure.ai.tools.*;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.Resource;
@@ -19,10 +23,35 @@ import java.nio.charset.StandardCharsets;
 @Configuration
 public class AiConfig {
 
-    private final ResourceLoader resourceLoader;
+    /** Tamaño de la ventana que el LLM ve en cada turno. La persistencia no la amplía. */
+    private static final int MAX_MENSAJES_MEMORIA = 14;
 
-    public AiConfig(ResourceLoader resourceLoader) {
+    /** Un título son 6 palabras: el tope corta en seco cualquier verborrea del modelo. */
+    private static final int MAX_TOKENS_TITULO = 24;
+
+    private final ResourceLoader resourceLoader;
+    private final ChatMemoryStore chatMemoryStore;
+
+    public AiConfig(ResourceLoader resourceLoader, ChatMemoryStore chatMemoryStore) {
         this.resourceLoader = resourceLoader;
+        this.chatMemoryStore = chatMemoryStore;
+    }
+
+    /**
+     * Memoria respaldada en PostgreSQL, con el sesionId como memoryId: los seis subagentes
+     * comparten una única ventana por sesión, así que cambiar de módulo no rompe el hilo.
+     *
+     * alwaysKeepSystemMessageFirst es obligatorio aquí: al enrutar a otro subagente entra un
+     * system prompt distinto y MessageWindowChatMemory, por defecto, lo añadiría al FINAL de
+     * la ventana en vez de a la cabecera.
+     */
+    private ChatMemoryProvider memoriaDeSesion() {
+        return sesionId -> MessageWindowChatMemory.builder()
+                .id(sesionId)
+                .maxMessages(MAX_MENSAJES_MEMORIA)
+                .chatMemoryStore(chatMemoryStore)
+                .alwaysKeepSystemMessageFirst(true)
+                .build();
     }
 
     @Bean
@@ -37,7 +66,7 @@ public class AiConfig {
         String systemPrompt = cargarPrompt("classpath:prompts/subagents/pl_system_prompt.txt");
         return AiServices.builder(PlSubAgent.class)
                 .chatModel(new RetryingChatModel(chatModel))
-                .chatMemoryProvider(memId -> MessageWindowChatMemory.withMaxMessages(14))
+                .chatMemoryProvider(memoriaDeSesion())
                 .tools(simplexTool, sugerirTool, validarTool, granMTool, dosFasesTool, graficoTool)
                 .maxSequentialToolsInvocations(6)
                 .toolArgumentsErrorHandler((error, context) -> ToolErrorHandlerResult.text(
@@ -55,7 +84,7 @@ public class AiConfig {
         String systemPrompt = cargarPrompt("classpath:prompts/subagents/inventario_system_prompt.txt");
         return AiServices.builder(InventarioSubAgent.class)
                 .chatModel(new RetryingChatModel(chatModel))
-                .chatMemoryProvider(memId -> MessageWindowChatMemory.withMaxMessages(14))
+                .chatMemoryProvider(memoriaDeSesion())
                 .tools(inventarioTool)
                 .maxSequentialToolsInvocations(4)
                 .toolArgumentsErrorHandler((error, context) -> ToolErrorHandlerResult.text(
@@ -73,7 +102,7 @@ public class AiConfig {
         String systemPrompt = cargarPrompt("classpath:prompts/subagents/transporte_system_prompt.txt");
         return AiServices.builder(TransporteSubAgent.class)
                 .chatModel(new RetryingChatModel(chatModel))
-                .chatMemoryProvider(memId -> MessageWindowChatMemory.withMaxMessages(14))
+                .chatMemoryProvider(memoriaDeSesion())
                 .tools(transporteTool)
                 .maxSequentialToolsInvocations(4)
                 .toolArgumentsErrorHandler((error, context) -> ToolErrorHandlerResult.text(
@@ -91,7 +120,7 @@ public class AiConfig {
         String systemPrompt = cargarPrompt("classpath:prompts/subagents/redes_system_prompt.txt");
         return AiServices.builder(RedesSubAgent.class)
                 .chatModel(new RetryingChatModel(chatModel))
-                .chatMemoryProvider(memId -> MessageWindowChatMemory.withMaxMessages(14))
+                .chatMemoryProvider(memoriaDeSesion())
                 .tools(redTool)
                 .maxSequentialToolsInvocations(4)
                 .toolArgumentsErrorHandler((error, context) -> ToolErrorHandlerResult.text(
@@ -111,7 +140,7 @@ public class AiConfig {
         String systemPrompt = cargarPrompt("classpath:prompts/subagents/entera_system_prompt.txt");
         return AiServices.builder(EnteraSubAgent.class)
                 .chatModel(new RetryingChatModel(chatModel))
-                .chatMemoryProvider(memId -> MessageWindowChatMemory.withMaxMessages(14))
+                .chatMemoryProvider(memoriaDeSesion())
                 .tools(enteraTool, sugerirTool, validarTool)
                 .maxSequentialToolsInvocations(5)
                 .toolArgumentsErrorHandler((error, context) -> ToolErrorHandlerResult.text(
@@ -129,7 +158,7 @@ public class AiConfig {
         String systemPrompt = cargarPrompt("classpath:prompts/subagents/dinamica_system_prompt.txt");
         return AiServices.builder(DinamicaSubAgent.class)
                 .chatModel(new RetryingChatModel(chatModel))
-                .chatMemoryProvider(memId -> MessageWindowChatMemory.withMaxMessages(14))
+                .chatMemoryProvider(memoriaDeSesion())
                 .tools(dinamicaTool)
                 .maxSequentialToolsInvocations(4)
                 .toolArgumentsErrorHandler((error, context) -> ToolErrorHandlerResult.text(
@@ -161,7 +190,7 @@ public class AiConfig {
         String systemPrompt = cargarPrompt("classpath:prompts/tutor_system_prompt.txt");
         return AiServices.builder(TutorAiService.class)
                 .chatModel(new RetryingChatModel(chatModel))
-                .chatMemoryProvider(memId -> MessageWindowChatMemory.withMaxMessages(14))
+                .chatMemoryProvider(memoriaDeSesion())
                 .tools(simplexTool, sugerirTool, validarTool, granMTool, dosFasesTool, graficoTool, transporteTool, redTool, enteraTool, inventarioTool, dinamicaTool)
                 .maxSequentialToolsInvocations(6)
                 .toolArgumentsErrorHandler((error, context) -> ToolErrorHandlerResult.text(
@@ -183,6 +212,29 @@ public class AiConfig {
     public ModeloAiService modeloAiService(ChatModel chatModel) {
         return AiServices.builder(ModeloAiService.class)
                 .chatModel(new RetryingChatModel(chatModel))
+                .build();
+    }
+
+    /**
+     * Titular una conversación es una tarea de una línea: no justifica el modelo del tutor.
+     * Va contra un modelo pequeño propio, sin memoria, sin tools y sin RAG — y sin
+     * RetryingChatModel, porque aquí no hay tool calls que puedan salir malformadas y el
+     * fallo ya está cubierto por el título provisional.
+     */
+    @Bean
+    public TituladorAiService tituladorAiService(
+            @Value("${langchain4j.open-ai.chat-model.api-key}") String apiKey,
+            @Value("${langchain4j.open-ai.chat-model.base-url}") String baseUrl,
+            @Value("${app.titulos.model-name}") String modelName) {
+        ChatModel modeloPequeno = OpenAiChatModel.builder()
+                .apiKey(apiKey)
+                .baseUrl(baseUrl)
+                .modelName(modelName)
+                .temperature(0.3)
+                .maxTokens(MAX_TOKENS_TITULO)
+                .build();
+        return AiServices.builder(TituladorAiService.class)
+                .chatModel(modeloPequeno)
                 .build();
     }
 

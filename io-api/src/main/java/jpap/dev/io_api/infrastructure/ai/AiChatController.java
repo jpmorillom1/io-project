@@ -7,7 +7,9 @@ import jpap.dev.io_api.infrastructure.ai.ChatContextStore.DatosRespuesta;
 import jpap.dev.io_api.infrastructure.ai.dto.ChatRequest;
 import jpap.dev.io_api.infrastructure.ai.dto.ChatResponse;
 import jpap.dev.io_api.infrastructure.ai.dto.DecisionAprobacionRequest;
+import jpap.dev.io_api.infrastructure.ai.dto.HistorialSesion;
 import jpap.dev.io_api.infrastructure.ai.dto.ModeloSugeridoResponse;
+import jpap.dev.io_api.infrastructure.ai.dto.ResumenSesion;
 import jpap.dev.io_api.infrastructure.ai.dto.SugerirModeloRequest;
 import jpap.dev.io_api.infrastructure.ai.dto.ValidacionResponse;
 import jpap.dev.io_api.infrastructure.ai.dto.ValidarModeloRequest;
@@ -15,6 +17,8 @@ import jpap.dev.io_api.infrastructure.ai.hitl.AprobacionHumanaService;
 import jpap.dev.io_api.infrastructure.ai.supervisor.TutorSupervisorService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -26,10 +30,12 @@ import java.util.UUID;
 /**
  * Endpoints de la capa de IA.
  *
- * POST /api/v1/ai/chat            — conversación socrática con memoria de sesión
- * POST /api/v1/ai/chat/aprobacion — decisión humana (HITL) sobre una solicitud de resolución
- * POST /api/v1/ai/sugerir-modelo  — extrae un ModeloLP desde descripción en lenguaje natural
- * POST /api/v1/ai/validar-modelo  — valida un ModeloLP contra la descripción original
+ * POST /api/v1/ai/chat                       — conversación socrática con memoria de sesión
+ * POST /api/v1/ai/chat/aprobacion            — decisión humana (HITL) sobre una solicitud de resolución
+ * GET  /api/v1/ai/sesiones                   — conversaciones de la barra lateral
+ * GET  /api/v1/ai/chat/{sesionId}/historial  — transcript + último resultado, para rehidratar la UI
+ * POST /api/v1/ai/sugerir-modelo             — extrae un ModeloLP desde descripción en lenguaje natural
+ * POST /api/v1/ai/validar-modelo             — valida un ModeloLP contra la descripción original
  */
 @Slf4j
 @RestController
@@ -50,15 +56,21 @@ public class AiChatController {
     private final ModeloAiService modeloAiService;
     private final ChatContextStore contextStore;
     private final AprobacionHumanaService aprobacionService;
+    private final ChatHistorialService historialService;
+    private final TituloSesionService tituloService;
 
     public AiChatController(TutorSupervisorService tutorSupervisorService,
                             ModeloAiService modeloAiService,
                             ChatContextStore contextStore,
-                            AprobacionHumanaService aprobacionService) {
+                            AprobacionHumanaService aprobacionService,
+                            ChatHistorialService historialService,
+                            TituloSesionService tituloService) {
         this.tutorSupervisorService = tutorSupervisorService;
         this.modeloAiService = modeloAiService;
         this.contextStore = contextStore;
         this.aprobacionService = aprobacionService;
+        this.historialService = historialService;
+        this.tituloService = tituloService;
     }
 
     /**
@@ -73,12 +85,22 @@ public class AiChatController {
      */
     @PostMapping("/chat")
     public ResponseEntity<ChatResponse> chat(@RequestBody ChatRequest request) {
-        boolean sesionNueva = request.sesionId() == null || request.sesionId().isBlank();
+        // El sesionId es la clave de chat_memory (columna UUID). Un id que no lo sea
+        // arranca sesión nueva en vez de reventar con un 400.
+        boolean sesionNueva = !esUuid(request.sesionId());
         String sesionId = sesionNueva ? UUID.randomUUID().toString() : request.sesionId();
 
         log.info("[AI/chat] sesionId={} nueva={} mensajeLen={}",
                 sesionId, sesionNueva, request.mensaje().length());
         log.debug("[AI/chat] mensaje: {}", request.mensaje());
+
+        // Debe existir la fila de sesión antes de llamar al agente: chat_memory tiene FK contra ella.
+        boolean creada = historialService.asegurarSesion(sesionId, request.mensaje());
+        if (creada) {
+            // Fuera de la transacción de asegurarSesion: el hilo de fondo hace su propio
+            // UPDATE y no vería una fila que aún no ha comitado.
+            tituloService.generarEnBackground(UUID.fromString(sesionId), request.mensaje());
+        }
 
         contextStore.iniciar(sesionId);
         try {
@@ -90,6 +112,9 @@ public class AiChatController {
                     datos.validacion != null,
                     datos.solicitudAprobacion != null);
             log.debug("[AI/chat] respuesta: {}", respuesta);
+
+            registrarTurno(sesionId, request.mensaje(), respuesta,
+                    datos.solicitudAprobacion != null ? datos.solicitudAprobacion.metodo().name() : null);
 
             return ResponseEntity.ok(new ChatResponse(
                     sesionId, respuesta,
@@ -108,6 +133,7 @@ public class AiChatController {
             // El error crudo del proveedor LLM jamás debe llegar al chat: los reintentos
             // ya se agotaron en RetryingChatModel, aquí solo queda degradar con gracia.
             log.error("[AI/chat] fallo del LLM tras reintentos — sesionId={}", sesionId, e);
+            registrarTurno(sesionId, request.mensaje(), MENSAJE_ERROR_LLM, null);
             return ResponseEntity.ok(new ChatResponse(
                     sesionId, MENSAJE_ERROR_LLM,
                     null, null, null, null, null, null, null, null, null, null
@@ -140,9 +166,16 @@ public class AiChatController {
         // Reanudar la conversación: el tutor recibe el desenlace como mensaje de sistema
         contextStore.iniciar(desenlace.sesionId());
         var ejecucion = desenlace.ejecucion();
+        String mensajeSistema = mensajeDeDesenlace(desenlace);
+
+        // La evidencia del solver se guarda aunque el tutor falle al explicarla.
+        registrarProblemaResuelto(desenlace);
+
         try {
-            String respuesta = tutorSupervisorService.chat(desenlace.sesionId(), mensajeDeDesenlace(desenlace));
+            String respuesta = tutorSupervisorService.chat(desenlace.sesionId(), mensajeSistema);
             DatosRespuesta datos = contextStore.obtener();
+
+            registrarTurno(desenlace.sesionId(), mensajeSistema, respuesta, desenlace.metodo().name());
 
             return ResponseEntity.ok(new ChatResponse(
                     desenlace.sesionId(), respuesta,
@@ -165,6 +198,7 @@ public class AiChatController {
             String respuesta = ejecucion != null
                     ? MENSAJE_ERROR_LLM_CON_RESULTADO
                     : MENSAJE_ERROR_LLM;
+            registrarTurno(desenlace.sesionId(), mensajeSistema, respuesta, desenlace.metodo().name());
             return ResponseEntity.ok(new ChatResponse(
                     desenlace.sesionId(), respuesta,
                     null, null,
@@ -180,6 +214,36 @@ public class AiChatController {
         } finally {
             contextStore.limpiar();
         }
+    }
+
+    /**
+     * Conversaciones de la barra lateral, la más reciente primero.
+     *
+     * No hay usuarios: la lista es global. La purga por inactividad
+     * (ChatHistorialService#purgarSesionesInactivas) la mantiene acotada.
+     */
+    @GetMapping("/sesiones")
+    public ResponseEntity<List<ResumenSesion>> sesiones() {
+        List<ResumenSesion> sesiones = historialService.listarSesiones();
+        log.debug("[AI/sesiones] {} conversaciones", sesiones.size());
+        return ResponseEntity.ok(sesiones);
+    }
+
+    /**
+     * Todo lo necesario para reabrir una conversación: el transcript que rehidrata el chat
+     * y el último problema resuelto que rehidrata el workspace.
+     *
+     * 404 significa "ese sesionId ya no existe": el cliente debe descartarlo y empezar
+     * una sesión nueva.
+     */
+    @GetMapping("/chat/{sesionId}/historial")
+    public ResponseEntity<HistorialSesion> historial(@PathVariable String sesionId) {
+        return historialService.historialCompleto(sesionId)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> {
+                    log.info("[AI/chat/historial] sesión desconocida {}", sesionId);
+                    return ResponseEntity.notFound().build();
+                });
     }
 
     /**
@@ -231,6 +295,40 @@ public class AiChatController {
     }
 
     // ─── helpers ───────────────────────────────────────────────────────────────
+
+    private boolean esUuid(String valor) {
+        if (valor == null || valor.isBlank()) return false;
+        try {
+            UUID.fromString(valor);
+            return true;
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
+    }
+
+    /**
+     * La auditoría es best-effort: un fallo escribiendo el historial no puede convertir
+     * una respuesta buena del tutor en un 500.
+     */
+    private void registrarTurno(String sesionId, String prompt, String respuesta, String toolLlamada) {
+        try {
+            String modulo = tutorSupervisorService.moduloDeSesion(sesionId).name();
+            historialService.registrarTurno(sesionId, modulo, prompt, respuesta, toolLlamada);
+        } catch (RuntimeException e) {
+            log.warn("[AI] no se pudo registrar el turno de la sesión {}: {}", sesionId, e.getMessage());
+        }
+    }
+
+    private void registrarProblemaResuelto(AprobacionHumanaService.Desenlace d) {
+        if (!d.aprobado() || d.ejecucion() == null) return;
+        try {
+            historialService.registrarProblemaResuelto(
+                    d.sesionId(), d.metodo(), d.modelo(), d.ejecucion());
+        } catch (RuntimeException e) {
+            log.warn("[AI] no se pudo registrar el problema resuelto de la sesión {}: {}",
+                    d.sesionId(), e.getMessage());
+        }
+    }
 
     private String mensajeDeDesenlace(AprobacionHumanaService.Desenlace d) {
         if (d.aprobado()) {

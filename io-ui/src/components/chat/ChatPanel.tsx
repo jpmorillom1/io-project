@@ -1,9 +1,11 @@
 import { useRef, useEffect, useState } from 'react'
+import { AnimatePresence } from 'motion/react'
 import { useChat } from '@/hooks'
 import { ChatBubble } from './ChatBubble'
 import { ApprovalCard } from './ApprovalCard'
+import { HistorialPanel } from './HistorialPanel'
 import { Button } from '@/components/ui/button'
-import { Loader2, Send } from 'lucide-react'
+import { History, Loader2, Send, SquarePen } from 'lucide-react'
 import { ShaderGlow } from '@/components/ui/ShaderGlow'
 import { PivotAvatar } from './PivotAvatar'
 
@@ -13,9 +15,10 @@ const PROMPTS_EJEMPLO = [
 ]
 
 export function ChatPanel() {
-  const { mensajes, enviar, decidir, solicitud, isSending, error } = useChat()
+  const { mensajes, enviar, decidir, solicitud, isSending, error, refrescarSesiones, nuevaConversacion } = useChat()
   const [input, setInput] = useState('')
   const [inputFocused, setInputFocused] = useState(false)
+  const [historialAbierto, setHistorialAbierto] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -36,13 +39,26 @@ export function ChatPanel() {
     }
   }
 
+  // El titulador corre en background: al abrir la lista pedimos la versión fresca para
+  // que el título definitivo reemplace al recorte provisional del enunciado.
+  function abrirHistorial() {
+    refrescarSesiones()
+    setHistorialAbierto(true)
+  }
+
+  function handleNueva() {
+    nuevaConversacion()
+    setInput('')
+    setHistorialAbierto(false)
+  }
+
   return (
-    <div className="flex flex-col h-full" style={{ background: 'var(--ij-bg-editor)' }}>
+    <div className="relative flex flex-col h-full" style={{ background: 'var(--ij-bg-editor)' }}>
       {/* Header */}
       <div className="px-4 py-3" style={{ background: 'var(--ij-bg-editor)', borderBottom: '1px solid var(--ij-bg-secondary)' }}>
         <div className="flex items-center gap-2.5">
           <PivotAvatar className="shrink-0" />
-          <div>
+          <div className="flex-1 min-w-0">
             <p
               className="text-sm font-semibold leading-tight"
               style={{ fontFamily: "'JetBrains Mono', monospace", color: 'var(--ij-teal)' }}
@@ -59,8 +75,27 @@ export function ChatPanel() {
               </span>
             </div>
           </div>
+
+          <IconoHeader
+            label="Ver conversaciones"
+            onClick={abrirHistorial}
+            disabled={isSending}
+          >
+            <History className="h-4 w-4" />
+          </IconoHeader>
+          <IconoHeader
+            label="Nueva conversación"
+            onClick={handleNueva}
+            disabled={isSending || mensajes.length === 0}
+          >
+            <SquarePen className="h-4 w-4" />
+          </IconoHeader>
         </div>
       </div>
+
+      <AnimatePresence>
+        {historialAbierto && <HistorialPanel onCerrar={() => setHistorialAbierto(false)} />}
+      </AnimatePresence>
 
       {/* Mensajes */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-3 min-h-0">
@@ -161,6 +196,31 @@ export function ChatPanel() {
         </p>
       </div>
     </div>
+  )
+}
+
+function IconoHeader({
+  label,
+  onClick,
+  disabled,
+  children,
+}: {
+  label: string
+  onClick: () => void
+  disabled: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={label}
+      aria-label={label}
+      className="shrink-0 rounded-[4px] p-1.5 transition-colors duration-[120ms] disabled:opacity-40 enabled:hover:bg-[var(--ij-bg-hover)]"
+      style={{ color: 'var(--ij-text-secondary)', cursor: disabled ? 'default' : 'pointer' }}
+    >
+      {children}
+    </button>
   )
 }
 

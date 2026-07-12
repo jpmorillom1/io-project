@@ -140,6 +140,45 @@ export interface Mensaje {
   timestamp: number
 }
 
+// ── Historial de conversaciones ──────────────────────────────────────────────
+
+/** Módulo que atiende una sesión. Es el nombre del enum ModuloIO del backend. */
+export type ModuloActivo = 'PL' | 'INVENTARIO' | 'TRANSPORTE' | 'REDES' | 'ENTERA' | 'DINAMICA'
+
+/** Mensaje del transcript persistido. */
+export interface MensajeHistorial {
+  rol: 'user' | 'tutor'
+  texto: string
+  fecha: string
+}
+
+/** Una conversación en la barra lateral. GET /ai/sesiones las devuelve por actividad reciente. */
+export interface ResumenSesion {
+  sesionId: string
+  titulo: string
+  moduloActivo: ModuloActivo | null
+  actualizada: string
+}
+
+/**
+ * Último problema que la sesión resolvió. `metodo` decide a qué editor va `modelo`
+ * y a qué panel va `resultado` — por eso ambos llegan sin tipar.
+ */
+export interface ProblemaResueltoHistorial {
+  metodo: MetodoResolucion
+  modelo: unknown
+  resultado: unknown
+}
+
+/** Lo que devuelve GET /ai/chat/{sesionId}/historial: chat + workspace de una conversación. */
+export interface HistorialSesion {
+  sesionId: string
+  titulo: string
+  moduloActivo: ModuloActivo | null
+  mensajes: MensajeHistorial[]
+  ultimoProblema: ProblemaResueltoHistorial | null
+}
+
 export interface TableauHighlights {
   columnaEntrada: number | null
   filaSalida: number | null

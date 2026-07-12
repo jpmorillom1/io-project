@@ -1,13 +1,14 @@
 package jpap.dev.io_api.infrastructure.ai.hitl;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import jpap.dev.io_api.domain.common.ModeloResoluble;
 import jpap.dev.io_api.infrastructure.ai.dto.SolicitudAprobacion;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -42,7 +43,9 @@ public class AprobacionHumanaService {
     private final ResolucionAprobadaWorkflow workflow;
     private final SolicitudAprobacionRegistry registry;
     private final ExecutorService hitlExecutor;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    // Jackson 3 (tools.jackson): el modeloModificado llega ya deserializado por los
+    // convertidores de Spring Boot 4, que son los de Jackson 3.
+    private final ObjectMapper objectMapper = JsonMapper.builder().build();
 
     public AprobacionHumanaService(ResolucionAprobadaWorkflow workflow,
                                    SolicitudAprobacionRegistry registry,
@@ -59,6 +62,7 @@ public class AprobacionHumanaService {
             boolean aprobado,
             String comentario,
             String resumenParaTutor,
+            ModeloResoluble modelo,                  // el modelo realmente resuelto (puede venir editado desde la UI)
             ResolucionEjecutor.Ejecucion ejecucion   // null si fue rechazada
     ) {}
 
@@ -121,7 +125,7 @@ public class AprobacionHumanaService {
 
             log.info("[HITL] solicitud {} decidida — aprobado={}", solicitudId, aprobado);
             return new Desenlace(solicitud.sesionId(), solicitud.metodo(), aprobado, comentario,
-                    resumen, solicitud.resultado());
+                    resumen, solicitud.modelo(), solicitud.resultado());
         } catch (TimeoutException e) {
             throw new IllegalStateException("El solver no terminó dentro del tiempo esperado", e);
         } catch (InterruptedException e) {

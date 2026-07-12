@@ -303,8 +303,8 @@ class ResolucionAprobadaWorkflowTest {
                         new Restriccion(List.of(0.0, 1.0), TipoRestriccion.LEQ, 1.0)
                 )
         );
-        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-        com.fasterxml.jackson.databind.JsonNode modificadoNode = mapper.valueToTree(modificado);
+        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+        tools.jackson.databind.JsonNode modificadoNode = mapper.valueToTree(modificado);
 
         var desenlace = service.decidir(solicitud.solicitudId(), true, "Aprobado con modelo modificado en UI", modificadoNode);
 

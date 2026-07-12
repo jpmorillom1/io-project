@@ -5,6 +5,7 @@ import type {
   ModeloEntero, SolveResultEntera,
   ModeloInventario, SolveResultInventario, MetodoInventario,
   ModeloDinamico, SolveResultDinamica, MetodoDinamico,
+  Mensaje, MensajeHistorial, ResumenSesion, HistorialSesion,
 } from '@/types/io'
 
 const API_BASE = 'http://localhost:8080/api/v1'
@@ -145,6 +146,29 @@ export async function enviarMensaje(
     body: JSON.stringify({ sesionId, mensaje }),
   })
   return handleResponse(res)
+}
+
+// Conversaciones para la barra lateral, la más reciente primero.
+export async function listarSesiones(): Promise<ResumenSesion[]> {
+  const res = await fetch(`${API_BASE}/ai/sesiones`)
+  return handleResponse(res)
+}
+
+// Transcript + último resultado de una sesión. Devuelve null si el backend ya no la conoce
+// (404): el sesionId guardado está rancio y hay que empezar una sesión nueva.
+export async function obtenerHistorial(sesionId: string): Promise<HistorialSesion | null> {
+  const res = await fetch(`${API_BASE}/ai/chat/${sesionId}/historial`)
+  if (res.status === 404) return null
+  return handleResponse(res)
+}
+
+// El transcript llega con fechas ISO; el chat pinta timestamps.
+export function aMensajes(historial: MensajeHistorial[]): Mensaje[] {
+  return historial.map(m => ({
+    rol: m.rol,
+    texto: m.texto,
+    timestamp: new Date(m.fecha).getTime(),
+  }))
 }
 
 // Decisión HITL sobre una solicitud de resolución pendiente.

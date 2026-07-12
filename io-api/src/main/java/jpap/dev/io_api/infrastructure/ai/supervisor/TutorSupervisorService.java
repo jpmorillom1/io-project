@@ -1,17 +1,21 @@
 package jpap.dev.io_api.infrastructure.ai.supervisor;
 
 import jpap.dev.io_api.infrastructure.ai.subagents.*;
+import jpap.dev.io_api.infrastructure.persistence.entity.SesionEntity;
+import jpap.dev.io_api.infrastructure.persistence.repository.SesionRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.text.Normalizer;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.UUID;
 
 /**
  * Supervisor / Orquestador principal de la arquitectura Multi-Agente.
  * Clasifica la solicitud del estudiante y enruta dinámicamente al subagente
  * especializado (PL, Inventario, Transporte, Redes, Entera o Dinámica).
+ *
+ * El módulo activo de cada sesión se persiste en sesion.modulo_activo, de modo que
+ * un reinicio del backend no hace que la conversación vuelva a empezar en PL.
  */
 @Slf4j
 @Service
@@ -33,9 +37,7 @@ public class TutorSupervisorService {
     private final EnteraSubAgent enteraSubAgent;
     private final DinamicaSubAgent dinamicaSubAgent;
     private final ModuloClassifierService moduloClassifierService;
-
-    // Mantiene el módulo activo por sesión para continuidad conversacional
-    private final Map<String, ModuloIO> sesionModulo = new ConcurrentHashMap<>();
+    private final SesionRepository sesionRepository;
 
     public TutorSupervisorService(PlSubAgent plSubAgent,
                                   InventarioSubAgent inventarioSubAgent,
@@ -43,7 +45,8 @@ public class TutorSupervisorService {
                                   RedesSubAgent redesSubAgent,
                                   EnteraSubAgent enteraSubAgent,
                                   DinamicaSubAgent dinamicaSubAgent,
-                                  ModuloClassifierService moduloClassifierService) {
+                                  ModuloClassifierService moduloClassifierService,
+                                  SesionRepository sesionRepository) {
         this.plSubAgent = plSubAgent;
         this.inventarioSubAgent = inventarioSubAgent;
         this.transporteSubAgent = transporteSubAgent;
@@ -51,6 +54,7 @@ public class TutorSupervisorService {
         this.enteraSubAgent = enteraSubAgent;
         this.dinamicaSubAgent = dinamicaSubAgent;
         this.moduloClassifierService = moduloClassifierService;
+        this.sesionRepository = sesionRepository;
     }
 
     public String chat(String sesionId, String mensaje) {
@@ -67,17 +71,25 @@ public class TutorSupervisorService {
         };
     }
 
+    /** Módulo que atiende la sesión ahora mismo; PL si aún no se ha clasificado. */
+    public ModuloIO moduloDeSesion(String sesionId) {
+        return sesionRepository.findById(UUID.fromString(sesionId))
+                .map(SesionEntity::getModuloActivo)
+                .map(ModuloIO::valueOf)
+                .orElse(ModuloIO.PL);
+    }
+
     private ModuloIO determinarModulo(String sesionId, String mensaje) {
         String texto = normalizar(mensaje);
 
         // Si es un mensaje del sistema [SISTEMA], mantener el módulo de la sesión
-        if (texto.startsWith("[sistema]") || texto.contains("[sistema]")) {
-            return sesionModulo.getOrDefault(sesionId, ModuloIO.PL);
+        if (texto.contains("[sistema]")) {
+            return moduloDeSesion(sesionId);
         }
 
         ModuloIO detectadoPorPalabras = clasificarPorPalabrasClave(texto);
         if (detectadoPorPalabras != null) {
-            sesionModulo.put(sesionId, detectadoPorPalabras);
+            guardarModulo(sesionId, detectadoPorPalabras);
             return detectadoPorPalabras;
         }
 
@@ -87,7 +99,7 @@ public class TutorSupervisorService {
             log.info("[SUPERVISOR] Clasificación LLM del mensaje -> {}", clasificado);
             if (clasificado != null && clasificado != ModuloClassifierService.ModuloDetectado.CONTINUAR) {
                 ModuloIO moduloIO = ModuloIO.valueOf(clasificado.name());
-                sesionModulo.put(sesionId, moduloIO);
+                guardarModulo(sesionId, moduloIO);
                 return moduloIO;
             }
         } catch (Exception e) {
@@ -95,7 +107,15 @@ public class TutorSupervisorService {
         }
 
         // Si no se detecta módulo nuevo o es CONTINUAR, seguir en el módulo de la sesión actual
-        return sesionModulo.getOrDefault(sesionId, ModuloIO.PL);
+        return moduloDeSesion(sesionId);
+    }
+
+    /** La fila de sesión la crea ChatHistorialService.asegurarSesion antes del primer turno. */
+    private void guardarModulo(String sesionId, ModuloIO modulo) {
+        sesionRepository.findById(UUID.fromString(sesionId)).ifPresent(sesion -> {
+            sesion.setModuloActivo(modulo.name());
+            sesionRepository.save(sesion);
+        });
     }
 
     private ModuloIO clasificarPorPalabrasClave(String texto) {

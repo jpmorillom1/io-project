@@ -52,6 +52,13 @@ app:
   rag:
     reingestar: ${RAG_REINGESTAR:true}
     incluir-pdf: ${RAG_INCLUIR_PDF:true}
+  sesion:
+    # Días sin actividad tras los cuales se purga una sesión (memoria, historial y problemas).
+    retencion-dias: ${SESION_RETENCION_DIAS:30}
+  titulos:
+    # Modelo que nombra cada conversación en la barra lateral. Es una tarea de una línea:
+    # usa el modelo más pequeño de Groq, no el del tutor.
+    model-name: ${GROQ_MODELO_TITULOS:llama-3.1-8b-instant}
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 logging:
