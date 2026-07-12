@@ -273,7 +273,11 @@ válidos. Las excepciones se reservan para entradas malformadas.
   planificacion-produccion,reemplazo-equipos}` (cada endpoint fuerza su método; bind directo de `ModeloDinamico`)
 
 ### infrastructure/ai/
-- `TutorAiService` — interfaz conversacional, memoria en RAM por sesión (30 mensajes)
+- `TutorAiService` — interfaz conversacional (tutor monolítico heredado; el controlador usa
+  `TutorSupervisorService`). Memoria persistida en PostgreSQL, ventana de 14 mensajes por sesión
+- `ChatHistorialService` — sesión, transcript (`interaccion_ia`) y evidencia (`problema_resuelto`)
+- `memory/PostgresChatMemoryStore` — `ChatMemoryStore` sobre la tabla `chat_memory`;
+  memoryId = `sesionId`, compartido por todos los subagentes
 - `ModeloAiService` — interfaz con structured output: `extraerModelo()` y `validarModelo()`
 - `AiConfig` — beans manuales via `AiServices.builder()`; registra los 11 componentes de tools (17 `@Tool`);
   envuelve el `ChatModel` en `RetryingChatModel` antes de pasarlo a los services
@@ -347,6 +351,14 @@ estructural, no de prompt. Ver §7 para el flujo completo.
 - Toda la cadena (`SolicitudAprobacion`, `Registry`, `AprobacionHumanaService`, `Workflow`)
   está tipada a `ModeloResoluble`, no a `ModeloLP` — así admite cualquier módulo futuro
 
+### infrastructure/persistence/ — JPA (IMPLEMENTADO)
+Nunca en `domain`: las entidades viven aquí (regla de capa §3).
+- `entity/` — `SesionEntity`, `ChatMemoryEntity`, `InteraccionIaEntity`, `ProblemaResueltoEntity`
+- `repository/` — los cuatro `JpaRepository` correspondientes
+- ⚠ `spring.jpa.hibernate.ddl-auto: validate`: cualquier desajuste entidad↔columna **rompe el
+  arranque**. Las columnas `TIMESTAMP` se mapean a `LocalDateTime` (no `Instant`) y las `JSONB`
+  a `String` con `@JdbcTypeCode(SqlTypes.JSON)`
+
 ### infrastructure/web/
 - `GlobalExceptionHandler` — IllegalArgumentException → HTTP 400
 - `WebConfig` — CORS para `localhost:*`
@@ -354,6 +366,8 @@ estructural, no de prompt. Ver §7 para el flujo completo.
 ### resources/
 - `prompts/tutor_system_prompt.txt` — system prompt socrático adaptativo (carga en runtime)
 - `db/migration/V1__init.sql` — tablas: sesion, problema_resuelto, interaccion_ia
+- `db/migration/V2__persistencia_chat.sql` — tabla `chat_memory`; `sesion.modulo_activo`,
+  `sesion.enunciado`; índice `(sesion_id, fecha)` sobre `interaccion_ia`
 
 ### test/
 - `SimplexSolverTest` — 7 tests de dominio sin Spring (incluye holguras, precios sombra, rangos)
@@ -421,7 +435,8 @@ estructural, no de prompt. Ver §7 para el flujo completo.
 | POST | `/api/v1/dinamica/ruta-etapas` | PD: ruta secuencial sobre una red por etapas (diligencia) |
 | POST | `/api/v1/dinamica/planificacion-produccion` | PD: producción e inventarios por etapas (demanda por periodo) |
 | POST | `/api/v1/dinamica/reemplazo-equipos` | PD: conservar o reemplazar un equipo cada año |
-| POST | `/api/v1/ai/chat` | Chat socrático con memoria de sesión |
+| POST | `/api/v1/ai/chat` | Chat socrático con memoria de sesión (persistida en PostgreSQL) |
+| GET | `/api/v1/ai/chat/{sesionId}/historial` | Transcript persistido de la sesión (404 si ya no existe) |
 | POST | `/api/v1/ai/chat/aprobacion` | HITL: decisión humana (aprobar/rechazar) sobre la solicitud de resolución pendiente |
 | POST | `/api/v1/ai/sugerir-modelo` | Extrae `ModeloLP` desde lenguaje natural |
 | POST | `/api/v1/ai/validar-modelo` | Valida modelo del estudiante contra enunciado |
@@ -537,9 +552,26 @@ Ciclo de vida: una nueva solicitud de la misma sesión reemplaza la anterior; la
 solicitudes sin decisión expiran a los 15 minutos (`limpiarExpiradas`, @Scheduled) y
 su `AgenticScope` se evacúa (`evictAgenticScope`).
 
-La memoria de sesión es **en RAM** (se pierde al reiniciar). La persistencia en PostgreSQL
-(tabla `sesion`) está pendiente de implementar con `ChatMemoryStore`. Las solicitudes HITL
-también viven en RAM — persistirlas requeriría un `AgenticScopeStore`.
+### Persistencia de sesión (IMPLEMENTADO)
+
+La memoria de sesión está **respaldada en PostgreSQL** (`PostgresChatMemoryStore` sobre la
+tabla `chat_memory`): una conversación sobrevive al reinicio del backend.
+
+- **memoryId = `sesionId`** — los seis subagentes comparten **una única ventana por sesión**,
+  así que cambiar de módulo a mitad de conversación ya no pierde el hilo. Consecuencia a
+  vigilar: el subagente entrante hereda los `tool_calls` del saliente, para herramientas que
+  no tiene registradas.
+- `alwaysKeepSystemMessageFirst(true)` es **obligatorio** con memoria compartida: al enrutar
+  a otro subagente entra un system prompt distinto y `MessageWindowChatMemory`, por defecto,
+  lo añadiría al FINAL de la ventana.
+- La ventana sigue siendo de 14 mensajes: persistir **no** amplía lo que el LLM ve por turno.
+- `sesion.modulo_activo` reemplaza al mapa en RAM de `TutorSupervisorService`.
+- `ChatHistorialService` llena `interaccion_ia` (transcript legible) y `problema_resuelto`
+  (modelo + `SolveResult` de cada resolución aprobada). Es auditoría best-effort: si falla,
+  se loguea y el turno del chat responde igual.
+- Retención: `app.sesion.retencion-dias` (default 30), purga diaria por `@Scheduled`.
+
+Las solicitudes HITL **siguen en RAM** — persistirlas requeriría un `AgenticScopeStore`.
 
 ---
 

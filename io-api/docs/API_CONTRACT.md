@@ -271,7 +271,28 @@ minutos sin decisión; una nueva solicitud de la misma sesión reemplaza la ante
 **Regla del frontend:** verificar cada campo antes de usar — cualquiera puede ser `null`.
 `resultado.solution` también puede ser `null` si `status` es `NO_ACOTADO` o `INFACTIBLE`.
 
-El `sesionId` se mantiene en RAM. Se pierde al reiniciar el servidor.
+El `sesionId` (un UUID que genera el servidor) se persiste en PostgreSQL junto con la memoria
+del LLM: la conversación **sobrevive al reinicio del servidor**. Si el cliente envía un
+`sesionId` nulo, en blanco o que no sea un UUID, se abre una sesión nueva.
+
+---
+
+### `GET /api/v1/ai/chat/{sesionId}/historial`
+
+Transcript persistido de la sesión, para rehidratar la UI tras un F5 o un reinicio del backend.
+Los mensajes internos `[SISTEMA]` (reanudación tras una decisión HITL) no aparecen como mensajes
+del estudiante: de esos turnos solo se devuelve la respuesta del tutor.
+
+**Respuesta 200**
+```json
+[
+  { "rol": "user",  "texto": "Maximizar 5x1 + 4x2", "fecha": "2026-07-09T08:31:02.114" },
+  { "rol": "tutor", "texto": "¿Qué representa x1 en tu problema?", "fecha": "2026-07-09T08:31:04.902" }
+]
+```
+
+**404** — la sesión no existe (o expiró por retención). El cliente debe descartar el `sesionId`
+guardado y empezar una sesión nueva.
 
 ---
 

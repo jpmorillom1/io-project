@@ -180,6 +180,11 @@ El dominio no conoce a nadie. La aplicación no conoce a la infraestructura.
 - Los records del dominio se usan directamente como request/response bodies (sin DTOs extra)
 
 ### Memoria de sesión
-- En RAM, `MessageWindowChatMemory.withMaxMessages(30)`
-- Se pierde al reiniciar el servidor
-- Pendiente: `ChatMemoryStore` con tabla `sesion` en PostgreSQL
+- Persistida en PostgreSQL: `infrastructure/ai/memory/PostgresChatMemoryStore` sobre `chat_memory`
+- `MessageWindowChatMemory` de 14 mensajes, con `memoryId = sesionId` **compartido** por los
+  seis subagentes (una sola ventana por sesión)
+- Sobrevive al reinicio del servidor; se purga por inactividad (`app.sesion.retencion-dias`)
+
+### Persistencia (`infrastructure/persistence`)
+- `entity/` + `repository/` — JPA nunca en `domain`
+- `ddl-auto: validate`: las entidades deben calzar exactamente con las migraciones Flyway

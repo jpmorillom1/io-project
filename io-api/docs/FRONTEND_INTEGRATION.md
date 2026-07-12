@@ -288,9 +288,12 @@ Los tres últimos campos son **nullable**. Verifica siempre antes de usar:
 
 ### Notas importantes
 
-- `sesionId` → UUID generado en el primer turno, persiste en `sessionStorage`
-- Memoria en **RAM** — se pierde al reiniciar el servidor
-- Máximo 30 mensajes por sesión (ventana deslizante)
+- `sesionId` → UUID generado por el servidor en el primer turno, guardado en `sessionStorage`
+- Memoria **persistida en PostgreSQL** — sobrevive al reinicio del servidor
+- Para recuperar el transcript tras un F5: `GET /api/v1/ai/chat/{sesionId}/historial`
+  (un `404` significa que el `sesionId` guardado ya no sirve: descártalo y empieza de nuevo)
+- Máximo 14 mensajes por sesión en la ventana que ve el LLM (deslizante); el historial
+  completo sí queda en la base
 - `resultado.solution` puede ser `null` si `status` es `NO_ACOTADO` o `INFACTIBLE`
 - El tutor puede encadenar tools: validar con errores + sugerir versión corregida en un turno
 

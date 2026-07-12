@@ -46,7 +46,8 @@ Base URL: `http://localhost:8080/api/v1`
 | POST | `/lp/simplex` | Simplex estándar (solo ≤); devuelve pasos + análisis post-óptimo |
 | POST | `/lp/gran-m` | Gran M (≤/≥/=); devuelve pasos + análisis post-óptimo |
 | POST | `/lp/dos-fases` | Dos Fases (≤/≥/=); devuelve pasos + análisis post-óptimo |
-| POST | `/ai/chat` | Chat socrático con memoria de sesión (RAM) |
+| POST | `/ai/chat` | Chat socrático con memoria de sesión (PostgreSQL) |
+| GET | `/ai/chat/{sesionId}/historial` | Transcript persistido de la sesión |
 | POST | `/ai/sugerir-modelo` | Extrae `ModeloLP` estructurado desde lenguaje natural |
 | POST | `/ai/validar-modelo` | Valida modelo del estudiante contra enunciado original |
 
