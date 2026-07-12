@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState } from 'react'
-import { AnimatePresence } from 'motion/react'
+import { AnimatePresence, motion } from 'motion/react'
+import { T_SNAPPY } from '@/lib/motion'
 import { useChat } from '@/hooks'
 import { ChatBubble } from './ChatBubble'
 import { ApprovalCard } from './ApprovalCard'
@@ -15,7 +16,10 @@ const PROMPTS_EJEMPLO = [
 ]
 
 export function ChatPanel() {
-  const { mensajes, enviar, decidir, solicitud, isSending, error, refrescarSesiones, nuevaConversacion } = useChat()
+  const {
+    mensajes, enviar, decidir, solicitud, isSending, actividad, error,
+    refrescarSesiones, nuevaConversacion,
+  } = useChat()
   const [input, setInput] = useState('')
   const [inputFocused, setInputFocused] = useState(false)
   const [historialAbierto, setHistorialAbierto] = useState(false)
@@ -57,7 +61,9 @@ export function ChatPanel() {
       {/* Header */}
       <div className="px-4 py-3" style={{ background: 'var(--ij-bg-editor)', borderBottom: '1px solid var(--ij-bg-secondary)' }}>
         <div className="flex items-center gap-2.5">
-          <PivotAvatar className="shrink-0" />
+          {/* El avatar es el indicador de estado del asistente: orbita mientras
+              Pivot piensa y se detiene al terminar. De ahí que reciba `isSending`. */}
+          <PivotAvatar className="shrink-0" activo={isSending} />
           <div className="flex-1 min-w-0">
             <p
               className="text-sm font-semibold leading-tight"
@@ -65,6 +71,8 @@ export function ChatPanel() {
             >
               Pivot
             </p>
+            {/* El estado "pensando" NO se anuncia aquí: ya lo cuentan el avatar
+                (que orbita) y la píldora del hilo. Repetirlo en tres sitios es ruido. */}
             <div className="flex items-center gap-1.5 mt-0.5">
               <span
                 className="h-1.5 w-1.5 rounded-full"
@@ -139,8 +147,23 @@ export function ChatPanel() {
         {isSending && (
           <div className="flex justify-start">
             <ShaderGlow target="pill">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: '#fff' }} />
-              Pivot está escribiendo…
+              <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" style={{ color: '#fff' }} />
+              {/* La fase la cuenta el backend mientras trabaja (ver ActividadRegistry).
+                  Hasta que llega el primer sondeo, el texto genérico de siempre.
+                  Solo fundido, sin desplazamiento: la píldora cambia de ancho con el
+                  texto y un movimiento lateral encima se leería como un tirón. */}
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.span
+                  key={actividad?.fase ?? 'escribiendo'}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={T_SNAPPY}
+                  className="whitespace-nowrap"
+                >
+                  {actividad?.texto ?? 'Pivot está escribiendo'}…
+                </motion.span>
+              </AnimatePresence>
             </ShaderGlow>
           </div>
         )}

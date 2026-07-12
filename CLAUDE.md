@@ -38,8 +38,21 @@ de un módulo TODO sin que se te indique explícitamente.
 - **Animación (frontend):** `motion` (Framer Motion) + primitivas copiadas de
   [motion-primitives](https://motion-primitives.com) en `io-ui/src/components/motion-primitives/`.
   El vocabulario compartido (duraciones, easing, variantes) vive en `io-ui/src/lib/motion.ts`;
-  úsalo en vez de inventar `transition` por componente. `prefers-reduced-motion` se respeta
-  una sola vez con `<MotionConfig reducedMotion="user">` en `main.tsx`
+  úsalo en vez de inventar `transition` por componente. Sus equivalentes en CSS (`--ease-out`,
+  `--dur-fast`, `--dur-base`) están en `index.css` — son los MISMOS valores; no introduzcas una
+  curva nueva sin añadirla a los dos sitios. `prefers-reduced-motion` se respeta una sola vez
+  con `<MotionConfig reducedMotion="user">` en `main.tsx`.
+  **Reglas de motion (la UI imita un IDE, no una landing):**
+  - Presupuesto: **por debajo de 300 ms** en cualquier animación de UI. Entrar/salir siempre
+    con ease-out; `ease-in` arranca lento justo en el instante que el usuario está mirando
+  - **Nada de rebote ni desenfoque** en entradas recurrentes: `cardGroup` se dispara en los 6
+    workspaces y en cada respuesta de la IA — lo que lo distingue de `revealUp` es el escalonado
+    (50 ms), no la amplitud
+  - **Nada de movimiento perpetuo** en elementos siempre visibles (header, home). El ojo lo filtra
+    en segundos y mientras tanto mantiene la GPU despierta. Si algo se mueve, que SIGNIFIQUE algo:
+    el `PivotAvatar` orbita más rápido y más abierto solo mientras Pivot piensa (`activo`)
+  - Los canvas WebGL (`PivotAvatar`, `ShaderGlow`, `ShaderBackdrop`) deben **salir del bucle rAF**
+    con `prefers-reduced-motion`, no repintar eternamente el mismo fotograma
 - **IA:** LangChain4j **1.13.0** + módulo `langchain4j-agentic` 1.13.0-beta23 para el
   Human-in-the-Loop (ver nota crítica abajo)
 - **LLM:** OpenAI-compatible apuntado a **Groq** (`llama-3.3-70b-versatile`)
@@ -316,12 +329,34 @@ válidos. Las excepciones se reservan para entradas malformadas.
   (tipado a `ModeloResoluble`, sirve a LP y Transporte)
 - `AiChatController` — endpoints AI; `/chat` inicializa el store, llama al tutor
   y devuelve `ChatResponse`; `/chat/aprobacion` recibe la decisión humana, reanuda el
-  workflow y reanuda al tutor con el desenlace en un mensaje `[SISTEMA]`
+  workflow y reanuda al tutor con el desenlace en un mensaje `[SISTEMA]`;
+  `/chat/{id}/actividad` expone la fase en curso (ver `actividad/` abajo)
 - `dto/` — ChatRequest, ChatResponse (respuesta + 10 campos nullables: modeloSugerido, validacion,
            resultado, resultadoGrafico, resultadoTransporte, resultadoRed, resultadoEntero, resultadoInventario,
            resultadoDinamica, solicitudAprobacion), SolicitudAprobacion
            (modelo tipado `ModeloResoluble`), DecisionAprobacionRequest, SugerirModeloRequest,
            ModeloSugeridoResponse, ValidarModeloRequest, ValidacionResponse
+
+### infrastructure/ai/actividad/ — Actividad en vivo (IMPLEMENTADO)
+Lo que Pivot está haciendo AHORA MISMO, para que la UI lo anuncie mientras espera
+("Validando tu modelo…", "Resolviendo con MODI…"). `POST /ai/chat` es bloqueante y no
+cuenta nada por el camino: la fase viaja por un canal aparte que el frontend sondea
+cada 400 ms. Detalle completo en `docs/ARQUITECTURA_IA.md` §4.
+- `FaseActividad` (enum): PENSANDO, ENRUTANDO, FORMULANDO, VALIDANDO, PREPARANDO,
+  RESOLVIENDO, EXPLICANDO. **La plantilla del texto que ve el estudiante vive aquí** y
+  viaja ya compuesta: el frontend solo la pinta, sin diccionario paralelo en TypeScript
+- `Actividad` (record) — `fase`, `texto`, `secuencia` (contador monótono; la UI descarta
+  sondeos que lleguen fuera de orden)
+- `ActividadRegistry` — `ConcurrentHashMap<sesionId, Actividad>`; `@Scheduled` purga
+  entradas caducadas (>5 min). **NO es ThreadLocal** como `ChatContextStore`: quien LEE es
+  otra petición HTTP en otro hilo, y el solver del HITL corre en un hilo virtual de fondo
+- `EtiquetaMetodo` — el nombre REAL del algoritmo (MODI, Vogel, EOQ con descuentos): el
+  submétodo vive dentro del modelo, no en `MetodoResolucion`
+- Publican: `AiChatController` (PENSANDO/EXPLICANDO), `TutorSupervisorService` (ENRUTANDO),
+  `SugerirModeloTool` (FORMULANDO), `ValidarModeloTool` (VALIDANDO) y
+  `AprobacionHumanaService` (PREPARANDO en `solicitar`, RESOLVIENDO en `decidir`)
+- **Coste: CERO tokens.** No hay `@Tool` nueva ni cambios en el system prompt — la actividad
+  se OBSERVA desde fuera, no se le pregunta al LLM
 
 ### infrastructure/ai/hitl/ — Human-in-the-Loop (IMPLEMENTADO, langchain4j-agentic)
 Ningún solver se ejecuta desde el chat sin aprobación humana explícita — garantía
@@ -437,6 +472,7 @@ Nunca en `domain`: las entidades viven aquí (regla de capa §3).
 | POST | `/api/v1/dinamica/reemplazo-equipos` | PD: conservar o reemplazar un equipo cada año |
 | POST | `/api/v1/ai/chat` | Chat socrático con memoria de sesión (persistida en PostgreSQL) |
 | GET | `/api/v1/ai/chat/{sesionId}/historial` | Transcript persistido de la sesión (404 si ya no existe) |
+| GET | `/api/v1/ai/chat/{sesionId}/actividad` | Fase en curso del turno, para el indicador en vivo (204 si no hay turno) |
 | POST | `/api/v1/ai/chat/aprobacion` | HITL: decisión humana (aprobar/rechazar) sobre la solicitud de resolución pendiente |
 | POST | `/api/v1/ai/sugerir-modelo` | Extrae `ModeloLP` desde lenguaje natural |
 | POST | `/api/v1/ai/validar-modelo` | Valida modelo del estudiante contra enunciado |
@@ -452,11 +488,15 @@ Ver `docs/API_CONTRACT.md` para los cuerpos de request/response completos.
 
 ## 7. Capa de IA — cómo funciona
 
-Tres responsabilidades separadas (detalle en `docs/ARQUITECTURA_IA.md`):
+Cuatro responsabilidades separadas (detalle en `docs/ARQUITECTURA_IA.md`):
 
 - **Comportarse** → `prompts/tutor_system_prompt.txt` — tutor socrático adaptativo
 - **Hacer** → `@Tool` en `infrastructure/ai/tools/` — nunca en domain
 - **Saber** → RAG con ChromaDB — **IMPLEMENTADO** (ver detalles abajo)
+- **Contar lo que hace** → `infrastructure/ai/actividad/` — **IMPLEMENTADO**. Es la única de
+  las cuatro que NO pasa por el LLM: la fase se observa desde fuera (el supervisor al enrutar,
+  las tools al escribir, el HITL al resolver) y se publica en un registro por sesión que la UI
+  sondea. Cuesta cero tokens y no puede mentir
 
 ### RAG — Retrieval Augmented Generation (IMPLEMENTADO )
 
@@ -611,6 +651,18 @@ Las solicitudes HITL **siguen en RAM** — persistirlas requeriría un `AgenticS
   (es lo que lee `JsonSchemaElementUtils.isRequired`), y en la `@Description` pide OMITIR el campo,
   nunca enviar `null` (ver `RedTool.AristaInput`).
 - ❌ No re-tipes la cadena HITL a un módulo concreto — usa `ModeloResoluble` (interfaz marcador en `domain/common`).
+- ❌ No le pidas al LLM que **narre lo que está haciendo** ni añadas una `@Tool` para ello: gastaría
+  tokens y podría mentir. La actividad se OBSERVA desde fuera (`ActividadRegistry`), publicándola en
+  los puntos por los que el turno ya pasa.
+- ❌ No conviertas `ActividadRegistry` en un `ThreadLocal` "por simetría" con `ChatContextStore`:
+  quien LEE la actividad es otra petición HTTP en otro hilo, y el solver del HITL corre en un hilo
+  virtual de fondo. La clave es la **sesión**, no el hilo.
+- ❌ No publiques `RESOLVIENDO` después de abrir la compuerta HITL: el solver corre en un hilo virtual
+  mientras el hilo del request espera bloqueado, así que la UI nunca llegaría a ver la fase. Va ANTES
+  del `complete(...)` en `AprobacionHumanaService.decidir`.
+- ❌ No anuncies el método por el nombre del enum (`TRANSPORTE`, `INVENTARIO`): no le enseña nada al
+  estudiante. El algoritmo real (MODI, Vogel, EOQ con descuentos) vive DENTRO del modelo — desempácalo
+  con `EtiquetaMetodo`.
 - ❌ No dejes que un **infinito** llegue a un record de salida ni al mapa `datos` de un paso: Jackson lo
   serializa como el token `Infinity`, que no es JSON válido y rompe a cualquier cliente. En PD los estados
   inalcanzables valen ±∞ internamente y se OMITEN de `TablaEtapa.filas`; si el estado inicial resulta

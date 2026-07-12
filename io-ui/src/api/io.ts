@@ -5,7 +5,7 @@ import type {
   ModeloEntero, SolveResultEntera,
   ModeloInventario, SolveResultInventario, MetodoInventario,
   ModeloDinamico, SolveResultDinamica, MetodoDinamico,
-  Mensaje, MensajeHistorial, ResumenSesion, HistorialSesion,
+  Mensaje, MensajeHistorial, ResumenSesion, HistorialSesion, Actividad,
 } from '@/types/io'
 
 const API_BASE = 'http://localhost:8080/api/v1'
@@ -160,6 +160,18 @@ export async function obtenerHistorial(sesionId: string): Promise<HistorialSesio
   const res = await fetch(`${API_BASE}/ai/chat/${sesionId}/historial`)
   if (res.status === 404) return null
   return handleResponse(res)
+}
+
+// Qué está haciendo Pivot ahora mismo en esta sesión. 204 = no hay turno en curso.
+// Nunca lanza: es un indicador accesorio y un fallo suyo no puede romper el chat.
+export async function obtenerActividad(sesionId: string): Promise<Actividad | null> {
+  try {
+    const res = await fetch(`${API_BASE}/ai/chat/${sesionId}/actividad`)
+    if (res.status === 204 || !res.ok) return null
+    return await res.json()
+  } catch {
+    return null
+  }
 }
 
 // El transcript llega con fechas ISO; el chat pinta timestamps.

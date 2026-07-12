@@ -11,6 +11,23 @@ import { useReducedMotion } from 'motion/react'
  *    con caída exponencial y donde se solapan el color se suma y se enciende.
  *
  * Ese halo por suma es lo que hace el efecto; no se reproduce solo con la paleta.
+ *
+ * ── Reposo y "pensando" ────────────────────────────────────────────────────
+ * El avatar orbita SIEMPRE: es lo que lo hace parecer vivo. Lo que cambia cuando
+ * Pivot está pensando (`activo`) es la ENERGÍA — un solo escalar en [0,1] que
+ * interpola a la vez la velocidad de órbita y la apertura de las órbitas. Con
+ * energía alta los blobs giran más rápido y se separan más del centro, así que la
+ * silueta se estira en lóbulos: se nota de un vistazo, sin leer nada.
+ *
+ * La energía se aproxima exponencialmente a su objetivo, no salta: el avatar se
+ * "acelera" y se "calma". Por eso la fase se ACUMULA en JS (`fase += dt·v`) en vez
+ * de calcularse como `tiempo · velocidad` dentro del shader — multiplicar el tiempo
+ * transcurrido por una velocidad que cambia teletransporta los blobs (era un bug
+ * real: con `prefers-reduced-motion` la velocidad caía a 0 y la fase con ella).
+ *
+ * `prefers-reduced-motion` es el único caso en que el bucle se detiene del todo:
+ * queda una silueta compuesta y estática, y se abandona el rAF en lugar de
+ * repintar el mismo fotograma para siempre.
  */
 
 // ─── GLSL ────────────────────────────────────────────────────────────────────
@@ -26,38 +43,41 @@ void main() {
 const FRAG = `#version 300 es
 precision highp float;
 
-uniform float u_time;
-uniform float u_speed;
-
-in  vec2 v_uv;
-out vec4 out_color;
+/* Fase acumulada por el bucle de JS, no tiempo transcurrido: ver la nota del
+   componente sobre por que la velocidad no puede multiplicarse aqui dentro. */
+uniform float u_fase;
 
 /* Solo ASCII dentro del shader: algunos drivers rechazan el fuente si aparecen
    caracteres no-ASCII, incluso dentro de comentarios.
 
-   RADIO = tamano de cada blob. ORBIT = cuanto se alejan del centro.
-   Con ORBIT por debajo de RADIO los blobs nunca se separan: se funden en una
-   silueta unica con lobulos. Subir ORBIT los separa; subir RADIO los engorda. */
-const float RADIO = 0.145;
-const float ORBIT = 0.125;
+   u_radio = tamano de cada blob. u_orbit = cuanto se alejan del centro.
+   Con u_orbit por debajo de u_radio los blobs nunca se separan: se funden en una
+   silueta unica. Al subir u_orbit por encima, la silueta se estira en lobulos
+   (es lo que pasa cuando Pivot piensa). u_radio sube un poco a la vez para que
+   los lobulos sigan unidos por un istmo y la figura no se rompa en discos. */
+uniform float u_radio;
+uniform float u_orbit;
+
+in  vec2 v_uv;
+out vec4 out_color;
 
 /* Campo de metaball: (R*R)/(d*d). La isosuperficie f = 1 cae a distancia R. */
 float campo(vec2 p, vec2 c) {
   vec2 d = p - c;
-  return (RADIO * RADIO) / max(dot(d, d), 1e-5);
+  return (u_radio * u_radio) / max(dot(d, d), 1e-5);
 }
 
 void main() {
-  float t = u_time * u_speed;
+  float t = u_fase;
   vec2  p = v_uv;
   vec2  o = vec2(0.5);
 
   /* Mismas frecuencias y desfases que el ShaderGlow original, pero con un radio
      de orbita mucho menor: antes se alejaban hasta 0.42 del centro. */
-  vec2 c1 = o + ORBIT * vec2(sin(t * 0.80),         cos(t * 0.60));
-  vec2 c2 = o + ORBIT * vec2(sin(t * 0.50 + 2.094), cos(t * 0.70 + 2.094));
-  vec2 c3 = o + ORBIT * vec2(sin(t * 0.65 + 4.189), cos(t * 0.42 + 4.189));
-  vec2 c4 = o + ORBIT * vec2(sin(t * 0.45 + 1.047), cos(t * 0.55 + 3.142));
+  vec2 c1 = o + u_orbit * vec2(sin(t * 0.80),         cos(t * 0.60));
+  vec2 c2 = o + u_orbit * vec2(sin(t * 0.50 + 2.094), cos(t * 0.70 + 2.094));
+  vec2 c3 = o + u_orbit * vec2(sin(t * 0.65 + 4.189), cos(t * 0.42 + 4.189));
+  vec2 c4 = o + u_orbit * vec2(sin(t * 0.45 + 1.047), cos(t * 0.55 + 3.142));
 
   /* Silueta: suma de los cuatro campos, recortada en la isosuperficie f = 1. */
   float f = campo(p, c1) + campo(p, c2) + campo(p, c3) + campo(p, c4);
@@ -114,19 +134,52 @@ function buildProgram(gl: WebGL2RenderingContext): WebGLProgram {
 
 // ─── Componente ──────────────────────────────────────────────────────────────
 
+/**
+ * Los dos extremos entre los que interpola la energía. En reposo el avatar orbita
+ * a un ritmo tranquilo pero perfectamente visible; pensando gira al triple y abre
+ * las órbitas por encima del radio de los blobs, que es cuando la silueta empieza
+ * a estirarse en lóbulos. El radio sube apenas — lo justo para que los lóbulos
+ * sigan unidos y la figura no se desarme en cuatro discos.
+ */
+const REPOSO   = { velocidad: 0.7, orbit: 0.125, radio: 0.145 }
+const PENSANDO = { velocidad: 2.1, orbit: 0.185, radio: 0.155 }
+
+/**
+ * Constante de tiempo de la aceleración y la calma, en segundos: tras ~1.5 s el
+ * avatar ha alcanzado en la práctica su estado. Corta = cambia de golpe.
+ */
+const TAU = 0.5
+
+/**
+ * Fase de partida. No es 0 a propósito: en t=0 los cuatro blobs arrancan de
+ * posiciones muy alineadas y la silueta sale sosa. Aquí ya están repartidos.
+ */
+const FASE_INICIAL = 12
+
+const mezcla = (a: number, b: number, e: number) => a + (b - a) * e
+
 interface Props {
   /** Lado del avatar en px. */
   size?: number
+  /** `true` mientras Pivot piensa: sube la energía (gira más rápido y más abierto). */
+  activo?: boolean
   className?: string
 }
 
-export function PivotAvatar({ size = 56, className }: Props) {
+export function PivotAvatar({ size = 34, activo = false, className }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const reducirMovimiento = useReducedMotion()
 
-  // El bucle lee la velocidad por ref: cambiarla no reinicia el contexto WebGL.
-  const speedRef = useRef(0.7)
-  speedRef.current = reducirMovimiento ? 0 : 0.7
+  // El bucle lee estos valores por ref: cambiar de estado no reinicia el contexto WebGL.
+  const energiaObjetivoRef = useRef(0)
+  energiaObjetivoRef.current = activo ? 1 : 0
+
+  const reducirRef = useRef(false)
+  reducirRef.current = !!reducirMovimiento
+
+  // Con movimiento reducido el bucle se abandona; quien lo repone si el usuario
+  // desactiva el ajuste es este puente, no el propio bucle.
+  const despertarRef = useRef<() => void>(() => {})
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -153,44 +206,87 @@ export function PivotAvatar({ size = 56, className }: Props) {
     gl.bindVertexArray(null)
     gl.useProgram(prog)
 
-    const uTime = gl.getUniformLocation(prog, 'u_time')
-    const uSpeed = gl.getUniformLocation(prog, 'u_speed')
+    const uFase = gl.getUniformLocation(prog, 'u_fase')
+    const uRadio = gl.getUniformLocation(prog, 'u_radio')
+    const uOrbit = gl.getUniformLocation(prog, 'u_orbit')
 
-    const dpr = window.devicePixelRatio || 1
+    // Acotado a 2: es un blob difuminado de 34 px, a 3x no gana nada y cuadruplica píxeles.
+    const dpr = Math.min(window.devicePixelRatio || 1, 2)
     const lado = Math.round(size * dpr)
     canvas.width = lado
     canvas.height = lado
     gl.viewport(0, 0, lado, lado)
 
-    let rafId: number
-    const t0 = performance.now()
+    let fase = FASE_INICIAL
+    let energia = 0
+    let rafId = 0
+    let anterior = performance.now()
 
-    function frame() {
-      const t = (performance.now() - t0) / 1000
-      gl.uniform1f(uTime, t)
-      gl.uniform1f(uSpeed, speedRef.current)
+    function pintar() {
+      gl.uniform1f(uFase, fase)
+      gl.uniform1f(uRadio, mezcla(REPOSO.radio, PENSANDO.radio, energia))
+      gl.uniform1f(uOrbit, mezcla(REPOSO.orbit, PENSANDO.orbit, energia))
       gl.clearColor(0, 0, 0, 0)
       gl.clear(gl.COLOR_BUFFER_BIT)
       gl.bindVertexArray(vao)
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
       gl.bindVertexArray(null)
+    }
+
+    function frame(ahora: number) {
+      // Si el ajuste se activa a mitad de sesión, se sale del bucle dejando la
+      // silueta donde esté.
+      if (reducirRef.current) {
+        rafId = 0
+        return
+      }
+
+      // Acotado: si la pestaña estuvo oculta, `ahora - anterior` puede ser enorme
+      // y la fase daría un salto al volver.
+      const dt = Math.min((ahora - anterior) / 1000, 0.05)
+      anterior = ahora
+
+      // Aproximación exponencial, independiente de la tasa de refresco: la energía
+      // persigue a su objetivo en vez de saltar a él.
+      energia += (energiaObjetivoRef.current - energia) * (1 - Math.exp(-dt / TAU))
+      fase += dt * mezcla(REPOSO.velocidad, PENSANDO.velocidad, energia)
+      pintar()
+
       rafId = requestAnimationFrame(frame)
     }
 
-    rafId = requestAnimationFrame(frame)
+    function despertar() {
+      if (rafId !== 0) return
+      anterior = performance.now()
+      rafId = requestAnimationFrame(frame)
+    }
+    despertarRef.current = despertar
+
+    // Con movimiento reducido se pinta UN fotograma y no se entra al bucle: una
+    // silueta estática. Repintar eternamente el mismo cuadro solo gasta batería.
+    if (reducirRef.current) pintar()
+    else despertar()
 
     return () => {
-      cancelAnimationFrame(rafId)
+      despertarRef.current = () => {}
+      if (rafId !== 0) cancelAnimationFrame(rafId)
       gl.deleteBuffer(buf)
       gl.deleteVertexArray(vao)
       gl.deleteProgram(prog)
     }
   }, [size])
 
+  // Si el usuario desactiva el ajuste del sistema, hay que reponer el bucle:
+  // nunca llegó a arrancar.
+  useEffect(() => {
+    if (!reducirMovimiento) despertarRef.current()
+  }, [reducirMovimiento])
+
   return (
     <canvas
       ref={canvasRef}
       className={className}
+      aria-hidden
       style={{ width: size, height: size, display: 'block' }}
     />
   )

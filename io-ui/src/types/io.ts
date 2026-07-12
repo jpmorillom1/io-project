@@ -140,6 +140,30 @@ export interface Mensaje {
   timestamp: number
 }
 
+// ── Actividad en vivo ────────────────────────────────────────────────────────
+
+/** Fases de un turno del chat. Es el enum FaseActividad del backend. */
+export type FaseActividad =
+  | 'PENSANDO'
+  | 'ENRUTANDO'
+  | 'FORMULANDO'
+  | 'VALIDANDO'
+  | 'PREPARANDO'
+  | 'RESOLVIENDO'
+  | 'EXPLICANDO'
+
+/**
+ * Lo que Pivot está haciendo ahora mismo. El `texto` viene ya compuesto desde el
+ * backend ("Resolviendo con MODI") — aquí NO se traduce nada: el vocabulario vive
+ * en un solo sitio, en `FaseActividad.java`.
+ */
+export interface Actividad {
+  fase: FaseActividad
+  texto: string
+  /** Contador monótono: sirve para descartar sondeos que lleguen fuera de orden. */
+  secuencia: number
+}
+
 // ── Historial de conversaciones ──────────────────────────────────────────────
 
 /** Módulo que atiende una sesión. Es el nombre del enum ModuloIO del backend. */

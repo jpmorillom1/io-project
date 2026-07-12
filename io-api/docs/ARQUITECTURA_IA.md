@@ -89,3 +89,70 @@ Las herramientas invocadas por los subagentes comunican artefactos visuales y re
 - `validacion`: feedback pedagógico sobre errores del estudiante.
 - `solicitudAprobacion`: tarjeta HITL pendiente de decisión (`solicitudId`, `metodo`, `creadaEn`).
 - `resultado` / `resultadoGrafico` / `resultadoTransporte` / `resultadoRedes` / `resultadoEntera` / `resultadoInventario` / `resultadoDinamica`: solución estructurada renderizable en tablas, gráficos o diagramas de red.
+
+---
+
+## 4. Actividad en vivo (`infrastructure/ai/actividad`)
+
+`POST /api/v1/ai/chat` es **bloqueante**: no cuenta nada por el camino, así que la UI solo
+sabría que "algo está pasando". Para que el estudiante vea *qué* está pasando —"Validando tu
+modelo", "Resolviendo con MODI"— la fase viaja por un **canal aparte** que la UI sondea.
+
+```
+POST /ai/chat ──────────────────────────────────► (bloqueado ~2-8 s)
+   │  publica fases mientras trabaja
+   ▼
+ActividadRegistry  (RAM, ConcurrentHashMap<sesionId, Actividad>)
+   ▲
+   │  GET /ai/chat/{sesionId}/actividad   ← la UI sondea cada 400 ms
+```
+
+### Piezas
+- `FaseActividad` (enum) — las 7 fases y **la plantilla del texto que ve el estudiante**.
+  El texto se compone aquí y viaja ya formado: el frontend solo lo pinta, sin diccionario
+  paralelo en TypeScript.
+- `Actividad` (record) — `fase`, `texto`, `secuencia` (contador monótono: la UI descarta
+  sondeos que lleguen fuera de orden).
+- `ActividadRegistry` — el mapa por sesión. `@Scheduled` purga entradas caducadas (>5 min)
+  como red de seguridad si algún turno muere saltándose el `finally`.
+- `EtiquetaMetodo` — traduce `MetodoResolucion` + modelo al **nombre real del algoritmo**.
+
+### Dónde se publica cada fase
+
+| Fase | Texto | Punto de publicación |
+|---|---|---|
+| `PENSANDO` | Analizando el enunciado | `AiChatController.chat`, al entrar |
+| `ENRUTANDO` | Consultando el módulo de *X* | `TutorSupervisorService.chat`, tras elegir subagente |
+| `FORMULANDO` | Formulando el modelo | `SugerirModeloTool` |
+| `VALIDANDO` | Validando tu modelo | `ValidarModeloTool` |
+| `PREPARANDO` | Preparando la resolución por *X* | `AprobacionHumanaService.solicitar` |
+| `RESOLVIENDO` | Resolviendo con *X* | `AprobacionHumanaService.decidir` |
+| `EXPLICANDO` | Preparando la explicación | `AiChatController.aprobacion` |
+
+### Decisiones de diseño que NO hay que deshacer
+
+- **No es `ThreadLocal`** como `ChatContextStore`: quien LEE la actividad es otra petición
+  HTTP, en otro hilo, y el solver del HITL corre además en un hilo virtual de fondo.
+  La clave tiene que ser la **sesión**, no el hilo.
+- **`PREPARANDO` se publica en `AprobacionHumanaService.solicitar()`, no en
+  `SolicitudAprobacionHelper`.** Las 17 `@Tool` de resolución pasan por el helper, pero
+  `solicitar()` es el único punto que ya tiene sesión + modelo + método juntos: publicar ahí
+  evita tocar las once clases de tools.
+- **`RESOLVIENDO` se publica ANTES de abrir la compuerta HITL.** El solver corre en un hilo
+  virtual mientras el hilo del request espera bloqueado; publicarlo después significaría que
+  la UI nunca llega a ver la fase.
+- **El nombre del algoritmo sale del modelo, no del enum.** `MetodoResolucion.TRANSPORTE` no
+  enseña nada; el algoritmo concreto vive DENTRO del modelo (`ModeloTransporte.metodo()` →
+  Vogel o MODI; Inventarios y PD tienen 5 submodelos cada uno). De eso se encarga `EtiquetaMetodo`.
+- **El `sesionId` de una conversación nueva lo acuña el FRONTEND** (`crypto.randomUUID()`).
+  El backend ya aceptaba cualquier UUID entrante (`esUuid` en `AiChatController`). Si lo
+  acuñara el servidor, el primer turno no tendría `sesionId` que sondear y la actividad solo
+  aparecería a partir del segundo mensaje.
+
+### Coste
+**Cero tokens.** No hay `@Tool` nueva, no se toca el system prompt y no hay llamadas extra al
+LLM: la actividad se **observa** desde fuera, no se le pregunta al modelo (que además podría
+mentir). El único coste es HTTP local: ~2,5 GET/s durante el turno, con respuestas de ~80 bytes.
+
+Publicar es **best-effort**: ninguna llamada a `publicar` está en la ruta crítica de una
+respuesta, y el sondeo del frontend nunca lanza.

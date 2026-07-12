@@ -296,6 +296,41 @@ guardado y empezar una sesión nueva.
 
 ---
 
+### `GET /api/v1/ai/chat/{sesionId}/actividad`
+
+**Qué está haciendo Pivot ahora mismo.** `POST /ai/chat` es bloqueante y no cuenta nada por el
+camino, así que la fase viaja por este canal aparte: la UI lo **sondea cada 400 ms** mientras
+dura el turno y va mutando el texto del indicador ("Pivot está escribiendo…" → "Validando tu
+modelo…" → "Resolviendo con MODI…").
+
+El `texto` viene **ya compuesto** desde el backend — el cliente no traduce nada, solo lo pinta.
+El nombre del algoritmo es el real (MODI, Vogel, EOQ con descuentos), no el del enum
+`MetodoResolucion`. Ver `docs/ARQUITECTURA_IA.md` §4.
+
+**Respuesta 200**
+```json
+{
+  "fase": "RESOLVIENDO",
+  "texto": "Resolviendo con MODI",
+  "secuencia": 42
+}
+```
+
+`fase` ∈ `PENSANDO`, `ENRUTANDO`, `FORMULANDO`, `VALIDANDO`, `PREPARANDO`, `RESOLVIENDO`, `EXPLICANDO`.
+
+`secuencia` es un contador monótono: dos sondeos en vuelo pueden volver desordenados, así que el
+cliente descarta cualquier respuesta con una secuencia menor que la ya pintada.
+
+**204 No Content** — no hay ningún turno en curso en esa sesión. **No es un error.** El cliente
+debe tratarlo como "sin novedad" y NO borrar la fase que ya tenía pintada: al arrancar un turno
+hay una ventana en la que el POST todavía no llegó al servidor y este endpoint devuelve 204.
+
+> ⚠ El `sesionId` de una conversación nueva lo acuña el **cliente** (`crypto.randomUUID()`) y lo
+> envía en el primer `POST /ai/chat` — el backend acepta cualquier UUID entrante. Si lo acuñara el
+> servidor, el primer turno no tendría `sesionId` que sondear.
+
+---
+
 ### `POST /api/v1/ai/chat/aprobacion`
 
 **Human-in-the-Loop.** Comunica la decisión del estudiante sobre la solicitud de

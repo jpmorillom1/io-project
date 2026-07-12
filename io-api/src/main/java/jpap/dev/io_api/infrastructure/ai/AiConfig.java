@@ -62,12 +62,13 @@ public class AiConfig {
                                  GranMTool granMTool,
                                  DosFasesTool dosFasesTool,
                                  GraficoTool graficoTool,
+                                 SensibilidadTool sensibilidadTool,
                                  ContentRetriever contentRetriever) throws IOException {
         String systemPrompt = cargarPrompt("classpath:prompts/subagents/pl_system_prompt.txt");
         return AiServices.builder(PlSubAgent.class)
                 .chatModel(new RetryingChatModel(chatModel))
                 .chatMemoryProvider(memoriaDeSesion())
-                .tools(simplexTool, sugerirTool, validarTool, granMTool, dosFasesTool, graficoTool)
+                .tools(simplexTool, sugerirTool, validarTool, granMTool, dosFasesTool, graficoTool, sensibilidadTool)
                 .maxSequentialToolsInvocations(6)
                 .toolArgumentsErrorHandler((error, context) -> ToolErrorHandlerResult.text(
                         "ERROR: los argumentos de la herramienta no cumplen su esquema: "
@@ -185,13 +186,14 @@ public class AiConfig {
                                          EnteraTool enteraTool,
                                          InventarioTool inventarioTool,
                                          DinamicaTool dinamicaTool,
+                                         SensibilidadTool sensibilidadTool,
                                          ContentRetriever contentRetriever)
             throws IOException {
         String systemPrompt = cargarPrompt("classpath:prompts/tutor_system_prompt.txt");
         return AiServices.builder(TutorAiService.class)
                 .chatModel(new RetryingChatModel(chatModel))
                 .chatMemoryProvider(memoriaDeSesion())
-                .tools(simplexTool, sugerirTool, validarTool, granMTool, dosFasesTool, graficoTool, transporteTool, redTool, enteraTool, inventarioTool, dinamicaTool)
+                .tools(simplexTool, sugerirTool, validarTool, granMTool, dosFasesTool, graficoTool, transporteTool, redTool, enteraTool, inventarioTool, dinamicaTool, sensibilidadTool)
                 .maxSequentialToolsInvocations(6)
                 .toolArgumentsErrorHandler((error, context) -> ToolErrorHandlerResult.text(
                         "ERROR: los argumentos de la herramienta no cumplen su esquema: "

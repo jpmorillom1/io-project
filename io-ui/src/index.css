@@ -25,6 +25,17 @@
     --ij-comment: #6E798A;
 
     --ij-border: #393840;
+
+    /* Vocabulario de movimiento para CSS. Su equivalente en JS vive en
+       `lib/motion.ts` (EASE_OUT / T_SNAPPY / T_BASE) — son los mismos valores:
+       no introduzcas una curva nueva sin añadirla a los dos sitios.
+       Entrar/salir siempre ease-out; `ease-in` en UI arranca lento justo en el
+       instante que el usuario está mirando. */
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+
+    --dur-fast: 120ms;  /* hover, color, foco */
+    --dur-base: 200ms;  /* desplegables, cambios de estado */
   }
 
   * {
@@ -38,6 +49,21 @@
     font-size: 13px;
     line-height: 16px;
     margin: 0;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: rgba(20, 196, 182, 0.28);
+    color: var(--ij-text-primary);
+  }
+
+  /* Anillo de foco visible y coherente para todo lo que se navega con teclado.
+     Solo `:focus-visible`: el clic con ratón no debe dejar el anillo pegado. */
+  :focus-visible {
+    outline: 2px solid var(--ij-blue);
+    outline-offset: 1px;
+    border-radius: 4px;
   }
 
   select {

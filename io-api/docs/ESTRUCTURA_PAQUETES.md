@@ -102,6 +102,12 @@ io-api/src/main/java/jpap/dev/io_api/
     ├── ai/
     │   ├── AiConfig.java                          @Configuration — beans manuales AiServices.builder()
     │   ├── AiChatController.java                  POST /api/v1/ai/{chat, sugerir-modelo, validar-modelo, chat/aprobacion}
+    │   │                                          GET  /api/v1/ai/chat/{sesionId}/{historial, actividad}
+    │   ├── actividad/
+    │   │   ├── FaseActividad.java                 Las 7 fases + la plantilla del texto que ve el estudiante
+    │   │   ├── Actividad.java                     record: fase, texto, secuencia (monótona)
+    │   │   ├── ActividadRegistry.java             Mapa por sesión (RAM) — NO ThreadLocal: lo lee otra petición
+    │   │   └── EtiquetaMetodo.java                Nombre real del algoritmo (MODI, Vogel…), no el del enum
     │   ├── supervisor/
     │   │   ├── TutorSupervisorService.java        Orquestador principal y enrutador por sesión
     │   │   └── ModuloClassifierService.java       Clasificador semántico LLM de módulo IO

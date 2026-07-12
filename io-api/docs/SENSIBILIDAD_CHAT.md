@@ -1,21 +1,33 @@
-# Análisis de sensibilidad explicado en términos del problema (LISTO PARA IMPLEMENTAR)
+# Análisis de sensibilidad explicado en términos del problema (IMPLEMENTADO)
 
-> **Estado: PLANIFICADO — NO IMPLEMENTADO.**
-> **La precondición ya está cubierta**: la persistencia de sesión (`PostgresChatMemoryStore` +
-> PostgreSQL) está implementada. Ver §6 y ejecútalo con las dos revisiones que allí se indican.
+> **Estado: IMPLEMENTADO.** Se ejecutó la §3 completa **y** la revisión de la §6 que la
+> persistencia habilitaba: los datos llegan al tutor por **dos vías**, no una.
 >
-> Lo que la persistencia deja servido:
-> - `problema_resuelto` guarda `modelo_json` + `resultado` (el `SolveResult` completo, con
->   `holguras`, `preciosSombra` y `rangosSensibilidad`) de cada resolución aprobada.
-> - `sesion.enunciado` guarda el enunciado en lenguaje natural → el mapeo `x1`→"mesas" deja de
->   depender de que el enunciado siga dentro de la ventana de memoria.
-> - `AprobacionHumanaService.Desenlace` ya lleva el `ModeloResoluble` (el punto de enganche que
->   pedía §6.1).
-> - `ProblemaResueltoRepository.findFirstBySesionIdOrderByResueltoEnDesc(...)` es la lectura que
->   necesita una `@Tool explicarSensibilidad()` — sin compuerta HITL, porque no ejecuta ningún solver.
+> 1. **Al resolver** — `ResolucionEjecutor.formatearTabular(...)` inyecta el bloque
+>    `ANÁLISIS DE SENSIBILIDAD` en el resumen `[SISTEMA]`, justo antes del detalle de
+>    iteraciones (sobrevive mejor a un truncado). Solo en `OPTIMO`/`MULTIPLE_OPTIMO`.
+> 2. **En cualquier turno posterior** — `@Tool explicarSensibilidad()` (`SensibilidadTool`)
+>    relee el último `problema_resuelto` de la sesión desde PostgreSQL y vuelve a redactar
+>    el bloque. **Esto elimina el riesgo de desalojo de la §4**: ya no importa que el mensaje
+>    `[SISTEMA]` se haya caído de la ventana de 14 mensajes. La tool **no pasa por la compuerta
+>    HITL** — no ejecuta ningún solver, solo lee un resultado que el humano ya aprobó.
 >
-> El **riesgo de desalojo de §4 desaparece** si la tool relee de la BD en vez de depender del
-> mensaje `[SISTEMA]`.
+> Piezas nuevas:
+> - `infrastructure/ai/sensibilidad/SensibilidadFormatter` — el texto (estático, sin estado).
+>   Único sitio donde vive el formato; lo consumen las dos vías.
+> - `infrastructure/ai/sensibilidad/SensibilidadService` — relectura desde `problema_resuelto`.
+>   Cuando no hay nada que explicar (aún no se resolvió, fue método gráfico, fue otro módulo,
+>   o el resultado fue infactible/no acotado) devuelve un texto que **se lo dice al LLM
+>   explícitamente** en vez de dejarlo inventar.
+> - `infrastructure/ai/tools/SensibilidadTool` — la `@Tool`. Registrada en `plSubAgent` y en
+>   `tutorAiService`. Es la **única tool del proyecto sin parámetros**: el `sesionId` viaja por
+>   el `ChatContextStore`, no por el esquema JSON.
+> - `TutorSupervisorService` enruta a PL por palabra clave ("sensibilidad", "precio(s) sombra",
+>   "holgura"): el análisis post-óptimo solo existe en LP, y dejar que el clasificador LLM lo
+>   mandara a otro módulo habría perdido el resultado.
+>
+> El **mapeo semántico** (`x1`→"mesas") lo sigue infiriendo el LLM desde el enunciado —no se
+> añadió glosario, la alternativa fuerte que planteaba la §6.2. Sigue disponible si hace falta.
 
 ---
 
@@ -222,12 +234,11 @@ Casos:
 
 ## 4. Riesgos conocidos
 
-- **Desalojo de memoria.** `AiConfig` usa `MessageWindowChatMemory.withMaxMessages(14)` en los 7
-  agentes. El mensaje `[SISTEMA]` con la sensibilidad sale de la ventana tras ~7 intercambios y el
-  tutor deja de tener los números. Es el trade-off aceptado al preferir no añadir un store por
-  sesión. **Mitigación incluida:** la regla del prompt "si no está el bloque, dilo y ofrece
-  resolver de nuevo; jamás inventes" convierte un fallo silencioso (números falsos) en uno visible
-  y recuperable. Mantener el bloque compacto ayuda a que sobreviva.
+- ~~**Desalojo de memoria.**~~ **RESUELTO.** El mensaje `[SISTEMA]` con la sensibilidad sigue
+  saliendo de la ventana de 14 mensajes tras ~7 intercambios, pero ya no es la única fuente:
+  `explicarSensibilidad()` relee los números de `problema_resuelto` en cualquier turno posterior.
+  Se mantiene además la regla del prompt "si la herramienta dice que no hay datos, dilo y ofrece
+  resolver; jamás inventes", que convierte un fallo silencioso (números falsos) en uno visible.
 - **Bug preexistente de `DosFasesSolver` con `≥`** (ver `docs/BUG_DOSFASES_GEQ.md`): devuelve
   soluciones que violan restricciones `≥`. Y el prompt manda usar Dos Fases *por defecto* ante `≥`.
   La sensibilidad de una solución incorrecta será incorrecta, así que esta funcionalidad va a

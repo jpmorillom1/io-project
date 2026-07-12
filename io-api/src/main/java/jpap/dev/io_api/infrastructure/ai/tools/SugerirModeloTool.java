@@ -10,6 +10,8 @@ import jpap.dev.io_api.domain.lp.Restriccion;
 import jpap.dev.io_api.domain.lp.TipoObjetivo;
 import jpap.dev.io_api.domain.lp.TipoRestriccion;
 import jpap.dev.io_api.infrastructure.ai.ChatContextStore;
+import jpap.dev.io_api.infrastructure.ai.actividad.ActividadRegistry;
+import jpap.dev.io_api.infrastructure.ai.actividad.FaseActividad;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -25,9 +27,11 @@ import java.util.List;
 public class SugerirModeloTool {
 
     private final ChatContextStore contextStore;
+    private final ActividadRegistry actividadRegistry;
 
-    public SugerirModeloTool(ChatContextStore contextStore) {
+    public SugerirModeloTool(ChatContextStore contextStore, ActividadRegistry actividadRegistry) {
         this.contextStore = contextStore;
+        this.actividadRegistry = actividadRegistry;
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
@@ -72,6 +76,7 @@ public class SugerirModeloTool {
         );
 
         contextStore.obtener().modeloSugerido = modelo;
+        actividadRegistry.publicar(contextStore.obtener().sesionId, FaseActividad.FORMULANDO);
 
         log.info("[TOOL] registrarModeloSugerido — vars={}, tipo={}, restricciones={}",
                 variables, tipoObjetivo, restricciones.size());

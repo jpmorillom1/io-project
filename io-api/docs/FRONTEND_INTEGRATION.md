@@ -34,6 +34,7 @@
 | POST | `/api/v1/inventario/{eoq-basico,eoq-descuentos,eoq-faltantes,produccion-economica,punto-reorden}` | Resolver Inventarios deterministas (ver sección 6) |
 | POST | `/api/v1/dinamica/{asignacion-recursos,mochila,ruta-etapas,planificacion-produccion,reemplazo-equipos}` | Resolver Programación Dinámica determinística (ver sección 7) |
 | POST | `/api/v1/ai/chat` | Chat socrático con el tutor Pivot |
+| GET | `/api/v1/ai/chat/{sesionId}/actividad` | Qué está haciendo Pivot ahora mismo — sondear durante el turno (ver sección 2.1) |
 | POST | `/api/v1/ai/chat/aprobacion` | HITL: aprobar/rechazar la resolución pendiente |
 | POST | `/api/v1/ai/sugerir-modelo` | Extraer un `ModeloLP` desde texto libre |
 | POST | `/api/v1/ai/validar-modelo` | Validar el modelo del estudiante |
@@ -192,13 +193,18 @@ Content-Type: application/json
 
 ```json
 {
-  "sesionId": null,
+  "sesionId": "a3f9c1d2-7b8e-4f1a-9c2d-0e5f6a7b8c9d",
   "mensaje": "Tengo un problema de producción de mesas y sillas..."
 }
 ```
 
-Usa `sesionId: null` en el primer turno. El backend genera el UUID y lo devuelve.
-**Guárdalo** y reenvíalo en cada turno siguiente.
+**Acuña tú el `sesionId`** en el primer turno (`crypto.randomUUID()`) y reenvíalo en cada turno
+siguiente. El backend acepta cualquier UUID entrante y crea la fila de sesión con él.
+
+> Un `sesionId` nulo, en blanco o que no sea un UUID también funciona: el backend acuña uno y lo
+> devuelve en `ChatResponse.sesionId`. Pero entonces **el primer turno no tiene id que sondear**, y
+> el indicador de actividad en vivo (§2.1) solo aparecería a partir del segundo mensaje. Por eso el
+> cliente lo genera.
 
 ### Response — estructura completa
 
@@ -288,7 +294,7 @@ Los tres últimos campos son **nullable**. Verifica siempre antes de usar:
 
 ### Notas importantes
 
-- `sesionId` → UUID generado por el servidor en el primer turno, guardado en `sessionStorage`
+- `sesionId` → UUID **acuñado por el cliente** en el primer turno, guardado en `localStorage`
 - Memoria **persistida en PostgreSQL** — sobrevive al reinicio del servidor
 - Para recuperar el transcript tras un F5: `GET /api/v1/ai/chat/{sesionId}/historial`
   (un `404` significa que el `sesionId` guardado ya no sirve: descártalo y empieza de nuevo)
@@ -296,6 +302,42 @@ Los tres últimos campos son **nullable**. Verifica siempre antes de usar:
   completo sí queda en la base
 - `resultado.solution` puede ser `null` si `status` es `NO_ACOTADO` o `INFACTIBLE`
 - El tutor puede encadenar tools: validar con errores + sugerir versión corregida en un turno
+
+---
+
+## 2.1. Actividad en vivo — qué está haciendo Pivot
+
+`POST /ai/chat` es **bloqueante** (2–8 s) y no cuenta nada por el camino. Para no dejar al
+estudiante mirando un spinner mudo, la fase en curso viaja por un canal aparte:
+
+```
+GET /api/v1/ai/chat/{sesionId}/actividad
+```
+
+**Sondéalo cada ~400 ms mientras el POST está en vuelo**, y muta el texto del indicador con lo
+que devuelva:
+
+```json
+{ "fase": "RESOLVIENDO", "texto": "Resolviendo con MODI", "secuencia": 42 }
+```
+
+`fase` ∈ `PENSANDO`, `ENRUTANDO`, `FORMULANDO`, `VALIDANDO`, `PREPARANDO`, `RESOLVIENDO`, `EXPLICANDO`.
+
+**Pinta `texto` tal cual: NO lo traduzcas ni construyas un diccionario en el cliente.** Viene ya
+compuesto desde el backend (`FaseActividad.java`) y lleva el nombre real del algoritmo — "MODI",
+"Vogel", "EOQ con descuentos" — no el del enum `MetodoResolucion`.
+
+Dos reglas para que el indicador no parpadee:
+
+1. **Un `204 No Content` NO borra la fase que ya tenías pintada.** Significa "no hay turno en curso",
+   y al arrancar hay una ventana en la que el POST todavía no llegó al servidor.
+2. **Descarta cualquier respuesta con `secuencia` menor que la ya pintada.** Es un contador monótono:
+   dos sondeos en vuelo pueden volver desordenados.
+
+Cuando el POST resuelve, deja de sondear y limpia el indicador.
+
+> Esto **no consume tokens**: la actividad se observa desde fuera (supervisor, tools, HITL), no se
+> le pregunta al LLM. Ver `docs/ARQUITECTURA_IA.md` §4.
 
 ---
 

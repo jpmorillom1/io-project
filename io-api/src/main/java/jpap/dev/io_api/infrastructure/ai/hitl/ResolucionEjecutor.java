@@ -34,6 +34,7 @@ import jpap.dev.io_api.domain.transporte.CostoPorMetodo;
 import jpap.dev.io_api.domain.transporte.MetodoTransporte;
 import jpap.dev.io_api.domain.transporte.ModeloTransporte;
 import jpap.dev.io_api.domain.transporte.SolucionTransporte;
+import jpap.dev.io_api.infrastructure.ai.sensibilidad.SensibilidadFormatter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -150,12 +151,13 @@ public class ResolucionEjecutor {
             case INVENTARIO -> throw new IllegalStateException("cubierto arriba");
             case PROGRAMACION_DINAMICA -> throw new IllegalStateException("cubierto arriba");
         };
-        return new Ejecucion(resultado, null, null, null, null, null, null, formatearTabular(resultado, metodo));
+        return new Ejecucion(resultado, null, null, null, null, null, null, formatearTabular(resultado, metodo, mlp));
     }
 
     // ─── formato para el tutor (movido desde las @Tool de resolución) ────────────
 
-    private String formatearTabular(SolveResult<SolucionLP> r, MetodoResolucion metodo) {
+    /** El modelo entra aquí porque la sensibilidad no se entiende sin el tipo y el álgebra de cada restricción. */
+    private String formatearTabular(SolveResult<SolucionLP> r, MetodoResolucion metodo, ModeloLP modelo) {
         String nombre = switch (metodo) {
             case SIMPLEX -> "Simplex estándar";
             case GRAN_M -> "Gran M";
@@ -201,6 +203,13 @@ public class ResolucionEjecutor {
 
         if (r.status() == SolveStatus.MULTIPLE_OPTIMO) {
             sb.append("Nota: existen óptimos múltiples — hay otras soluciones con el mismo Z*.\n");
+        }
+
+        // Antes del detalle de iteraciones a propósito: si el mensaje se trunca, lo que
+        // sobrevive es la interpretación del resultado, no el tableau paso a paso.
+        String sensibilidad = SensibilidadFormatter.formatear(r.solution(), modelo);
+        if (!sensibilidad.isEmpty()) {
+            sb.append("\n").append(sensibilidad);
         }
 
         if (metodo == MetodoResolucion.DOS_FASES) {
@@ -249,6 +258,13 @@ public class ResolucionEjecutor {
                 sb.append("\nLa interfaz ya muestra el tableau. Pregunta al estudiante qué resultado esperaba ");
                 sb.append("y qué significa la solución en el contexto del problema real.");
             }
+        }
+
+        if (!sensibilidad.isEmpty()) {
+            sb.append("\nOFRÉCELE ADEMÁS el análisis de sensibilidad: qué recursos quedaron como cuello de ")
+              .append("botella y cuánto valdría conseguir una unidad más de cada uno. Si acepta, usa los ")
+              .append("números de arriba (o vuelve a leerlos con la herramienta explicarSensibilidad) y ")
+              .append("explícalos SIEMPRE en el vocabulario del enunciado, nunca como x1, Z, R1 o s1.");
         }
 
         return sb.toString();

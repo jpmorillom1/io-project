@@ -1,8 +1,11 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
 import { useNavigate, useLocation } from 'react-router'
-import { enviarMensaje, decidirAprobacion, obtenerHistorial, listarSesiones, aMensajes } from '@/api/io'
+import {
+  enviarMensaje, decidirAprobacion, obtenerHistorial, listarSesiones, aMensajes, obtenerActividad,
+} from '@/api/io'
 import { useWorkspaceStore } from '@/store/useWorkspaceStore'
 import type {
+  Actividad,
   Mensaje, ChatResponse, SolicitudAprobacion, ModeloLP, SolveResult, SolveResultGrafico,
   ModeloTransporte, SolveResultTransporte, ModeloRed, SolveResultRed,
   ModeloEntero, SolveResultEntera, ModeloInventario, SolveResultInventario,
@@ -32,6 +35,8 @@ interface ChatContextValue {
   decidir: (aprobado: boolean, comentario?: string | null) => Promise<void>
   solicitud: SolicitudAprobacion | null
   isSending: boolean
+  /** Lo que Pivot está haciendo ahora mismo. null salvo durante un turno en curso. */
+  actividad: Actividad | null
   error: string | null
   /** Conversaciones anteriores, la más reciente primero. */
   sesiones: ResumenSesion[]
@@ -81,9 +86,13 @@ function moduloDeProblema(p: ProblemaResueltoHistorial): Modulo {
  * conversación. El chat es el orquestador: actualiza el store y navega al
  * módulo correcto cuando el tutor toma decisiones.
  */
+/** Cada cuánto se le pregunta al backend qué está haciendo. */
+const SONDEO_ACTIVIDAD_MS = 400
+
 export function ChatProvider({ children }: { children: ReactNode }) {
   const [mensajes, setMensajes] = useState<Mensaje[]>([])
   const [isSending, setIsSending] = useState(false)
+  const [actividad, setActividad] = useState<Actividad | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [solicitud, setSolicitud] = useState<SolicitudAprobacion | null>(null)
   const [sesiones, setSesiones] = useState<ResumenSesion[]>([])
@@ -198,6 +207,32 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     // Solo al montar: restaurar en cada render reabriría la sesión sobre sí misma.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  /**
+   * Sondea qué está haciendo Pivot mientras dura el turno. El POST del chat es
+   * bloqueante y no cuenta nada por el camino, así que la fase se consulta aparte.
+   *
+   * Dos reglas que evitan que el indicador parpadee:
+   *  - una respuesta vacía NO borra la fase actual (al arrancar el turno hay una
+   *    ventana en la que el POST aún no llegó al servidor y el sondeo da 204);
+   *  - una respuesta con `secuencia` menor que la ya pintada se descarta: dos
+   *    sondeos en vuelo pueden volver desordenados.
+   */
+  useEffect(() => {
+    if (!isSending || !sesionId) return
+
+    let cancelado = false
+    const id = window.setInterval(async () => {
+      const nueva = await obtenerActividad(sesionId)
+      if (cancelado || !nueva) return
+      setActividad(prev => (prev && nueva.secuencia < prev.secuencia ? prev : nueva))
+    }, SONDEO_ACTIVIDAD_MS)
+
+    return () => {
+      cancelado = true
+      window.clearInterval(id)
+    }
+  }, [isSending, sesionId])
 
   /** Abre una conversación anterior desde la barra lateral. */
   async function abrirSesion(id: string) {
@@ -315,12 +350,20 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     if (!texto.trim()) return
     const msgUser: Mensaje = { rol: 'user', texto, timestamp: Date.now() }
     setMensajes(prev => [...prev, msgUser])
+
+    // El id se acuña AQUÍ y no en el servidor. El backend acepta cualquier UUID que
+    // le llegue (`esUuid` en AiChatController) y crea la fila de sesión con él; si lo
+    // acuñara él, el primer turno de una conversación nueva no tendría sesionId que
+    // sondear y la actividad en vivo solo aparecería a partir del segundo mensaje.
+    const eraNueva = !sesionId
+    const id = sesionId ?? crypto.randomUUID()
+    if (eraNueva) setSesionId(id)
+
     setIsSending(true)
     store().setIsChatBusy(true)
     setError(null)
-    const eraNueva = !sesionId
     try {
-      const res = await enviarMensaje(sesionId, texto)
+      const res = await enviarMensaje(id, texto)
       if (eraNueva) {
         setSesionId(res.sesionId)
         localStorage.setItem(SESSION_KEY, res.sesionId)
@@ -337,6 +380,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       setError(msg)
     } finally {
       setIsSending(false)
+      setActividad(null)
       store().setIsChatBusy(false)
     }
   }
@@ -356,12 +400,13 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       setError(msg)
     } finally {
       setIsSending(false)
+      setActividad(null)
       store().setIsChatBusy(false)
     }
   }
 
   const value: ChatContextValue = {
-    mensajes, enviar, decidir, solicitud, isSending, error,
+    mensajes, enviar, decidir, solicitud, isSending, actividad, error,
     sesiones, sesionActivaId: sesionId, refrescarSesiones, abrirSesion, nuevaConversacion,
   }
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>

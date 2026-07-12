@@ -1,5 +1,7 @@
 package jpap.dev.io_api.infrastructure.ai.supervisor;
 
+import jpap.dev.io_api.infrastructure.ai.actividad.ActividadRegistry;
+import jpap.dev.io_api.infrastructure.ai.actividad.FaseActividad;
 import jpap.dev.io_api.infrastructure.ai.subagents.*;
 import jpap.dev.io_api.infrastructure.persistence.entity.SesionEntity;
 import jpap.dev.io_api.infrastructure.persistence.repository.SesionRepository;
@@ -38,6 +40,7 @@ public class TutorSupervisorService {
     private final DinamicaSubAgent dinamicaSubAgent;
     private final ModuloClassifierService moduloClassifierService;
     private final SesionRepository sesionRepository;
+    private final ActividadRegistry actividadRegistry;
 
     public TutorSupervisorService(PlSubAgent plSubAgent,
                                   InventarioSubAgent inventarioSubAgent,
@@ -46,7 +49,8 @@ public class TutorSupervisorService {
                                   EnteraSubAgent enteraSubAgent,
                                   DinamicaSubAgent dinamicaSubAgent,
                                   ModuloClassifierService moduloClassifierService,
-                                  SesionRepository sesionRepository) {
+                                  SesionRepository sesionRepository,
+                                  ActividadRegistry actividadRegistry) {
         this.plSubAgent = plSubAgent;
         this.inventarioSubAgent = inventarioSubAgent;
         this.transporteSubAgent = transporteSubAgent;
@@ -55,11 +59,25 @@ public class TutorSupervisorService {
         this.dinamicaSubAgent = dinamicaSubAgent;
         this.moduloClassifierService = moduloClassifierService;
         this.sesionRepository = sesionRepository;
+        this.actividadRegistry = actividadRegistry;
+    }
+
+    /** Nombre del módulo tal y como se le anuncia al estudiante mientras Pivot trabaja. */
+    private static String etiqueta(ModuloIO modulo) {
+        return switch (modulo) {
+            case PL -> "Programación Lineal";
+            case INVENTARIO -> "Inventarios";
+            case TRANSPORTE -> "Transporte";
+            case REDES -> "Redes";
+            case ENTERA -> "PL Entera";
+            case DINAMICA -> "Programación Dinámica";
+        };
     }
 
     public String chat(String sesionId, String mensaje) {
         ModuloIO modulo = determinarModulo(sesionId, mensaje);
         log.info("[SUPERVISOR] Sesión={} -> Enrutando al subagente: {}", sesionId, modulo);
+        actividadRegistry.publicar(sesionId, FaseActividad.ENRUTANDO, etiqueta(modulo));
 
         return switch (modulo) {
             case INVENTARIO -> inventarioSubAgent.chat(sesionId, mensaje);
@@ -155,10 +173,14 @@ public class TutorSupervisorService {
             return ModuloIO.ENTERA;
         }
 
-        // Programación Lineal Continua (Simplex, Gran M, Dos Fases, Gráfico)
+        // Programación Lineal Continua (Simplex, Gran M, Dos Fases, Gráfico).
+        // El análisis post-óptimo solo existe en LP: quien pregunta por él ya está en PL,
+        // y dejar que el clasificador LLM lo mande a otro módulo perdería el resultado.
         if (texto.contains("simplex") || texto.contains("gran m") || texto.contains("dos fases")
                 || texto.contains("metodo grafico") || texto.contains("maximizar") || texto.contains("minimizar")
-                || texto.contains("funcion objetivo") || texto.contains("restricciones")) {
+                || texto.contains("funcion objetivo") || texto.contains("restricciones")
+                || texto.contains("sensibilidad") || texto.contains("precio sombra")
+                || texto.contains("precios sombra") || texto.contains("holgura")) {
             return ModuloIO.PL;
         }
 

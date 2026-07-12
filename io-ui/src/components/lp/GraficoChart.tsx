@@ -75,7 +75,9 @@ function OverlayLayer({ xAxisMap, yAxisMap, region, vertices, var1, var2 }: any)
           const { cx, cy } = toSvg(v.x, v.y)
           return (
             <motion.g key={i} variants={popIn} style={{ transformOrigin: `${cx}px ${cy}px` }}>
-              {/* Halo del óptimo: late para que la vista aterrice en él. */}
+              {/* Halo del óptimo: late DOS veces para que la vista aterrice en él y
+                  luego se queda quieto. En bucle infinito dejaría de señalar nada —
+                  el ojo lo filtra a los pocos segundos y solo estorba al leer la tabla. */}
               {v.esOptimo && (
                 <motion.circle
                   cx={cx}
@@ -85,7 +87,7 @@ function OverlayLayer({ xAxisMap, yAxisMap, region, vertices, var1, var2 }: any)
                   stroke="rgba(20,196,182,0.3)"
                   strokeWidth={1}
                   animate={{ r: [14, 17, 14], opacity: [0.9, 0.35, 0.9] }}
-                  transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
+                  transition={{ duration: 2.4, repeat: 1, ease: 'easeInOut' }}
                 />
               )}
               {/* Punto */}

@@ -133,33 +133,41 @@ export function ShaderBackdrop({ rate = 0.8, className }: Props) {
       }
     }
 
-    const ro = new ResizeObserver(ajustarTamano)
-    ro.observe(canvas)
-    ajustarTamano()
-
     let rafId: number
     const t0 = performance.now()
-    // Con reduced-motion el tiempo queda clavado en un fotograma con ondas visibles.
-    let tCongelado: number | null = null
 
-    function frame() {
+    /** Fotograma con ondas ya formadas: el que se congela con reduced-motion. */
+    const T_CONGELADO = 20
+
+    function pintar(t: number) {
       ajustarTamano()
-      const segundos = (performance.now() - t0) / 1000
-      let t: number
-      if (rateRef.current === 0) {
-        if (tCongelado === null) tCongelado = 20
-        t = tCongelado
-      } else {
-        tCongelado = null
-        t = segundos * rateRef.current
-      }
       gl.uniform1f(uTime, t)
       gl.uniform2f(uRes, canvas!.width, canvas!.height)
       gl.bindVertexArray(vao)
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
       gl.bindVertexArray(null)
+    }
+
+    function frame() {
+      // Con reduced-motion no basta con congelar el reloj: hay que SALIR del bucle.
+      // Un rAF que repinta el mismo fotograma para siempre gasta GPU y batería sin
+      // dibujar nada nuevo. El ResizeObserver se encarga de repintar si hace falta.
+      if (rateRef.current === 0) {
+        pintar(T_CONGELADO)
+        return
+      }
+      pintar(((performance.now() - t0) / 1000) * rateRef.current)
       rafId = requestAnimationFrame(frame)
     }
+
+    // Redimensionar reasigna `canvas.width`, lo que BORRA el lienzo. Mientras el
+    // bucle corre eso da igual (el siguiente fotograma repinta), pero congelados
+    // hay que volver a pintar a mano o el glow desaparecería al cambiar de tamaño.
+    const ro = new ResizeObserver(() => {
+      ajustarTamano()
+      if (rateRef.current === 0) pintar(T_CONGELADO)
+    })
+    ro.observe(canvas)
 
     rafId = requestAnimationFrame(frame)
 
@@ -170,7 +178,9 @@ export function ShaderBackdrop({ rate = 0.8, className }: Props) {
       gl.deleteVertexArray(vao)
       gl.deleteProgram(prog)
     }
-  }, [])
+    // `reducirMovimiento` entra en las dependencias para que al desactivar el ajuste
+    // del sistema el bucle vuelva a arrancar: `frame` sale con `return`, no se repone solo.
+  }, [reducirMovimiento])
 
   return (
     <canvas

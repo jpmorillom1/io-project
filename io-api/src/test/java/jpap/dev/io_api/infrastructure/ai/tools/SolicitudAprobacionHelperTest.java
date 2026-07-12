@@ -47,7 +47,9 @@ class SolicitudAprobacionHelperTest {
                 new jpap.dev.io_api.application.dinamica.DinamicaService());
         ResolucionAprobadaWorkflow workflow = new HitlConfig().resolucionAprobadaWorkflow(ejecutor, registry);
         executor = Executors.newVirtualThreadPerTaskExecutor();
-        AprobacionHumanaService service = new AprobacionHumanaService(workflow, registry, executor);
+        AprobacionHumanaService service = new AprobacionHumanaService(
+                workflow, registry, executor,
+                new jpap.dev.io_api.infrastructure.ai.actividad.ActividadRegistry());
         contextStore = new ChatContextStore();
         redTool = new RedTool(service, contextStore);
     }

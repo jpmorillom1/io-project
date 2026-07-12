@@ -27,6 +27,7 @@ import jpap.dev.io_api.domain.redes.MetodoRed;
 import jpap.dev.io_api.domain.redes.ModeloRed;
 import jpap.dev.io_api.domain.transporte.MetodoTransporte;
 import jpap.dev.io_api.domain.transporte.ModeloTransporte;
+import jpap.dev.io_api.infrastructure.ai.actividad.ActividadRegistry;
 import jpap.dev.io_api.infrastructure.ai.dto.SolicitudAprobacion;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -66,7 +67,8 @@ class ResolucionAprobadaWorkflowTest {
                 new EnteraService(), new InventarioService(), new DinamicaService());
         ResolucionAprobadaWorkflow workflow = new HitlConfig().resolucionAprobadaWorkflow(ejecutor, registry);
         executor = Executors.newVirtualThreadPerTaskExecutor();
-        service = new AprobacionHumanaService(workflow, registry, executor);
+        // El registro de actividad es un indicador de progreso: aquí solo tiene que existir.
+        service = new AprobacionHumanaService(workflow, registry, executor, new ActividadRegistry());
     }
 
     @AfterEach

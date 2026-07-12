@@ -57,10 +57,12 @@ export const revealChip: ParVariantes = {
 /**
  * Entrada de las cards de un workspace. Se usa con `<AnimatedGroup variants={cardGroup}>`
  * y se re-dispara cuando la IA entrega algo (ver `revisionIA` en el store): las tarjetas
- * suben desenfocándose de menos a más nítidas, una tras otra.
+ * suben escalonadas, una tras otra.
  *
- * Es deliberadamente más amplio y lento que el resto del vocabulario: aquí el movimiento
- * anuncia "llegó contenido nuevo", no confirma un cambio de estado menor.
+ * El escalonado es lo único que la distingue de `revealUp`: anuncia "llegó contenido
+ * nuevo" por el orden, no por la amplitud. Nada de rebote, desenfoque ni recorridos
+ * largos — esto se ve en cada resolución, y una entrada de un segundo convierte a la
+ * app entera en lenta. Presupuesto de UI: por debajo de 300 ms.
  */
 export const cardGroup: { container: Variants; item: Variants } = {
   container: {
@@ -71,14 +73,20 @@ export const cardGroup: { container: Variants; item: Variants } = {
     },
   },
   item: {
-    hidden: { opacity: 0, y: 40, filter: 'blur(4px)' },
-    visible: {
-      opacity: 1,
-      y: 0,
-      filter: 'blur(0px)',
-      transition: { duration: 1.2, type: 'spring', bounce: 0.3 },
-    },
+    hidden: { opacity: 0, y: 12 },
+    visible: { opacity: 1, y: 0, transition: T_BASE },
   },
+}
+
+/**
+ * Contenido que se reemplaza en el sitio (el rodillo de módulos del home). Sale
+ * hacia arriba, entra desde abajo: la sustitución se lee como avance, no como
+ * parpadeo. La salida es más corta que la entrada — el hueco no debe notarse.
+ */
+export const swapFade = {
+  initial: { opacity: 0, y: 6 },
+  animate: { opacity: 1, y: 0, transition: T_BASE },
+  exit: { opacity: 0, y: -6, transition: T_SNAPPY },
 }
 
 /**

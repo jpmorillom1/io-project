@@ -4,6 +4,9 @@ import jpap.dev.io_api.domain.lp.FuncionObjetivo;
 import jpap.dev.io_api.domain.lp.Restriccion;
 import jpap.dev.io_api.domain.lp.TipoRestriccion;
 import jpap.dev.io_api.infrastructure.ai.ChatContextStore.DatosRespuesta;
+import jpap.dev.io_api.infrastructure.ai.actividad.Actividad;
+import jpap.dev.io_api.infrastructure.ai.actividad.ActividadRegistry;
+import jpap.dev.io_api.infrastructure.ai.actividad.FaseActividad;
 import jpap.dev.io_api.infrastructure.ai.dto.ChatRequest;
 import jpap.dev.io_api.infrastructure.ai.dto.ChatResponse;
 import jpap.dev.io_api.infrastructure.ai.dto.DecisionAprobacionRequest;
@@ -58,19 +61,22 @@ public class AiChatController {
     private final AprobacionHumanaService aprobacionService;
     private final ChatHistorialService historialService;
     private final TituloSesionService tituloService;
+    private final ActividadRegistry actividadRegistry;
 
     public AiChatController(TutorSupervisorService tutorSupervisorService,
                             ModeloAiService modeloAiService,
                             ChatContextStore contextStore,
                             AprobacionHumanaService aprobacionService,
                             ChatHistorialService historialService,
-                            TituloSesionService tituloService) {
+                            TituloSesionService tituloService,
+                            ActividadRegistry actividadRegistry) {
         this.tutorSupervisorService = tutorSupervisorService;
         this.modeloAiService = modeloAiService;
         this.contextStore = contextStore;
         this.aprobacionService = aprobacionService;
         this.historialService = historialService;
         this.tituloService = tituloService;
+        this.actividadRegistry = actividadRegistry;
     }
 
     /**
@@ -103,6 +109,7 @@ public class AiChatController {
         }
 
         contextStore.iniciar(sesionId);
+        actividadRegistry.publicar(sesionId, FaseActividad.PENSANDO);
         try {
             String respuesta = tutorSupervisorService.chat(sesionId, request.mensaje());
             DatosRespuesta datos = contextStore.obtener();
@@ -140,7 +147,21 @@ public class AiChatController {
             ));
         } finally {
             contextStore.limpiar();
+            actividadRegistry.limpiar(sesionId);
         }
+    }
+
+    /**
+     * Qué está haciendo Pivot en esta sesión ahora mismo, para que la UI lo anuncie
+     * mientras espera. La UI sondea este endpoint durante el turno.
+     *
+     * 204 significa "no hay ningún turno en curso" — no es un error.
+     */
+    @GetMapping("/chat/{sesionId}/actividad")
+    public ResponseEntity<Actividad> actividad(@PathVariable String sesionId) {
+        return actividadRegistry.actual(sesionId)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.noContent().build());
     }
 
     /**
@@ -165,6 +186,9 @@ public class AiChatController {
 
         // Reanudar la conversación: el tutor recibe el desenlace como mensaje de sistema
         contextStore.iniciar(desenlace.sesionId());
+        // El solver ya corrió dentro de decidir(); lo que queda es que el tutor lo explique.
+        // La fase RESOLVIENDO la publicó AprobacionHumanaService antes de abrir la compuerta.
+        actividadRegistry.publicar(desenlace.sesionId(), FaseActividad.EXPLICANDO);
         var ejecucion = desenlace.ejecucion();
         String mensajeSistema = mensajeDeDesenlace(desenlace);
 
@@ -213,6 +237,7 @@ public class AiChatController {
             ));
         } finally {
             contextStore.limpiar();
+            actividadRegistry.limpiar(desenlace.sesionId());
         }
     }
 
@@ -339,7 +364,9 @@ public class AiChatController {
                     %s
 
                     La interfaz ya muestra el procedimiento completo. Presenta el resultado conectándolo
-                    con el problema real, pregunta cómo lo interpreta y ofrece revisar las iteraciones.
+                    con el problema real, pregunta cómo lo interpreta, ofrece revisar las iteraciones y
+                    ofrece explicarle qué recursos quedaron como cuello de botella y cuánto valdría
+                    conseguir más de cada uno.
                     """.formatted(d.metodo(), d.resumenParaTutor());
         }
         String comentario = d.comentario() != null && !d.comentario().isBlank()

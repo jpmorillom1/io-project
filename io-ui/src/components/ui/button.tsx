@@ -4,7 +4,10 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[4px] text-[13px] font-medium transition-colors duration-[120ms] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ij-blue)] focus-visible:ring-offset-1 disabled:pointer-events-none disabled:opacity-50',
+  // El `active:scale` es el acuse de recibo de la pulsación: 2 % de hundimiento,
+  // suficiente para sentirse, invisible como movimiento. La transición se acota a
+  // color + transform; `transition-all` arrastraría layout fuera de la GPU.
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[4px] text-[13px] font-medium transition-[color,background-color,border-color,transform] duration-[120ms] ease-out active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ij-blue)] focus-visible:ring-offset-1 disabled:pointer-events-none disabled:opacity-50',
   {
     variants: {
       variant: {

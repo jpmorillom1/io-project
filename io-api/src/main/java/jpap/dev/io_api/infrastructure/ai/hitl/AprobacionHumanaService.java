@@ -1,6 +1,9 @@
 package jpap.dev.io_api.infrastructure.ai.hitl;
 
 import jpap.dev.io_api.domain.common.ModeloResoluble;
+import jpap.dev.io_api.infrastructure.ai.actividad.ActividadRegistry;
+import jpap.dev.io_api.infrastructure.ai.actividad.EtiquetaMetodo;
+import jpap.dev.io_api.infrastructure.ai.actividad.FaseActividad;
 import jpap.dev.io_api.infrastructure.ai.dto.SolicitudAprobacion;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -43,16 +46,19 @@ public class AprobacionHumanaService {
     private final ResolucionAprobadaWorkflow workflow;
     private final SolicitudAprobacionRegistry registry;
     private final ExecutorService hitlExecutor;
+    private final ActividadRegistry actividadRegistry;
     // Jackson 3 (tools.jackson): el modeloModificado llega ya deserializado por los
     // convertidores de Spring Boot 4, que son los de Jackson 3.
     private final ObjectMapper objectMapper = JsonMapper.builder().build();
 
     public AprobacionHumanaService(ResolucionAprobadaWorkflow workflow,
                                    SolicitudAprobacionRegistry registry,
-                                   ExecutorService hitlExecutor) {
+                                   ExecutorService hitlExecutor,
+                                   ActividadRegistry actividadRegistry) {
         this.workflow = workflow;
         this.registry = registry;
         this.hitlExecutor = hitlExecutor;
+        this.actividadRegistry = actividadRegistry;
     }
 
     /** Desenlace de una decisión: lo que el endpoint necesita para responder a la UI y retomar al tutor. */
@@ -81,6 +87,10 @@ public class AprobacionHumanaService {
         CompletableFuture<String> ejecucion = CompletableFuture.supplyAsync(
                 () -> workflow.resolver(solicitudId, modelo, metodo), hitlExecutor);
         solicitud.adjuntarEjecucion(ejecucion);
+
+        // Aquí, y no en SolicitudAprobacionHelper: este es el punto por el que pasan las
+        // once tools de resolución, y el único que ya tiene sesión, modelo y método juntos.
+        actividadRegistry.publicar(sesionId, FaseActividad.PREPARANDO, EtiquetaMetodo.de(metodo, modelo));
 
         log.info("[HITL] solicitud {} creada — sesion={}, metodo={}", solicitudId, sesionId, metodo);
         return new SolicitudAprobacion(solicitudId, metodo, modelo);
@@ -114,6 +124,14 @@ public class AprobacionHumanaService {
             } catch (Exception e) {
                 log.warn("[HITL] No se pudo deserializar modeloModificado para {}: {}", solicitud.metodo(), e.getMessage());
             }
+        }
+
+        // Se anuncia ANTES de abrir la compuerta: el solver corre en un hilo virtual de
+        // fondo mientras este hilo espera, así que si se publicara después la UI nunca
+        // llegaría a ver la fase. Un rechazo no ejecuta nada, y por eso no la publica.
+        if (aprobado) {
+            actividadRegistry.publicar(solicitud.sesionId(), FaseActividad.RESOLVIENDO,
+                    EtiquetaMetodo.de(solicitud.metodo(), solicitud.modelo()));
         }
 
         try {

@@ -1,18 +1,20 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { AnimatePresence, motion } from 'motion/react'
-import { TextScramble } from '@/components/motion-primitives/text-scramble'
-import { T_SNAPPY } from '@/lib/motion'
+import { swapFade } from '@/lib/motion'
 import {
   Sigma, Truck, Network, Binary, Package, Workflow,
   ArrowRight, type LucideIcon,
 } from 'lucide-react'
 
 /**
- * Presenta los módulos de UNO en uno, sin cards: el título se descifra letra a
- * letra (TextScramble) y el resto del bloque entra en fundido. El scramble solo
- * corre al montarse, así que el ciclo se encadena: al completarse se espera
- * `PAUSA_MS` y se avanza el índice; el `key` fuerza el remontaje.
+ * Presenta los módulos de uno en uno. El bloque se reemplaza con un crossfade
+ * corto (`swapFade`), no con un descifrado letra a letra: el home se mira de
+ * fondo mientras se escribe en el chat, y un texto en movimiento perpetuo en
+ * visión periférica es ruido, no información.
+ *
+ * Por lo mismo el ciclo se detiene mientras el puntero está encima o el foco
+ * dentro: si el usuario está leyendo, el carrusel no le cambia el texto debajo.
  */
 
 interface Modulo {
@@ -33,7 +35,7 @@ const MODULOS: Modulo[] = [
     description:
       'Formulación algebraica, tablas Simplex paso a paso, análisis de sensibilidad y región factible en 2D.',
     icon: Sigma,
-    color: '#24C2D6',
+    color: 'var(--ij-teal)',
     path: '/lp',
   },
   {
@@ -43,7 +45,7 @@ const MODULOS: Modulo[] = [
     description:
       'Matrices de costos, balanceo automático de oferta y demanda, y optimización iterativa con MODI.',
     icon: Truck,
-    color: '#B07CFF',
+    color: 'var(--ij-purple)',
     path: '/transporte',
   },
   {
@@ -53,7 +55,7 @@ const MODULOS: Modulo[] = [
     description:
       'Ruta más corta, árbol de expansión mínima y flujos óptimos sobre grafos interactivos.',
     icon: Network,
-    color: '#F2801A',
+    color: 'var(--ij-orange)',
     path: '/redes',
   },
   {
@@ -63,7 +65,7 @@ const MODULOS: Modulo[] = [
     description:
       'Árbol de ramificación y acotamiento para variables enteras y binarias, explicado nodo a nodo.',
     icon: Binary,
-    color: '#6CAB74',
+    color: 'var(--ij-green)',
     path: '/pl-entera',
   },
   {
@@ -73,7 +75,7 @@ const MODULOS: Modulo[] = [
     description:
       'Lote económico, punto de reorden y comparación de costos totales entre políticas.',
     icon: Package,
-    color: '#FFC859',
+    color: 'var(--ij-amber)',
     path: '/inventario',
   },
   {
@@ -83,145 +85,120 @@ const MODULOS: Modulo[] = [
     description:
       'Descomposición por etapas, recursión hacia atrás y recuperación de la política óptima.',
     icon: Workflow,
-    color: '#CF84CF',
+    color: 'var(--ij-blue)',
     path: '/dinamica',
   },
 ]
 
-/** Cuánto se queda quieto cada módulo una vez el título terminó de rodar. */
-const PAUSA_MS = 5000
+/** Cuánto se queda en pantalla cada módulo antes de ceder el turno. */
+const PAUSA_MS = 6000
 
 export function ModuloRotativo() {
   const navigate = useNavigate()
   const [indice, setIndice] = useState(0)
-  const timerRef = useRef<number | null>(null)
+  const [pausado, setPausado] = useState(false)
 
   const mod = MODULOS[indice]
   const Icon = mod.icon
 
-  useEffect(() => () => {
-    if (timerRef.current !== null) window.clearTimeout(timerRef.current)
-  }, [])
-
-  function alTerminarScramble() {
-    if (timerRef.current !== null) window.clearTimeout(timerRef.current)
-    timerRef.current = window.setTimeout(() => {
-      setIndice(i => (i + 1) % MODULOS.length)
-    }, PAUSA_MS)
-  }
-
-  /** Salto manual desde los puntos: detiene el ciclo en curso y reancla. */
-  function irA(i: number) {
-    if (timerRef.current !== null) window.clearTimeout(timerRef.current)
-    setIndice(i)
-  }
+  useEffect(() => {
+    if (pausado) return
+    const id = window.setInterval(
+      () => setIndice(i => (i + 1) % MODULOS.length),
+      PAUSA_MS
+    )
+    return () => window.clearInterval(id)
+  }, [pausado])
 
   return (
-    <div className="space-y-5">
+    <div
+      className="space-y-6"
+      onMouseEnter={() => setPausado(true)}
+      onMouseLeave={() => setPausado(false)}
+      onFocusCapture={() => setPausado(true)}
+      onBlurCapture={() => setPausado(false)}
+    >
       <p
-        className="text-[11px] font-medium"
+        className="text-[10px] font-medium"
         style={{
           fontFamily: "'JetBrains Mono', monospace",
-          letterSpacing: '2.5px',
+          letterSpacing: '2px',
           color: 'var(--ij-text-secondary)',
         }}
       >
-        MÓDULOS · {String(indice + 1).padStart(2, '0')}/{String(MODULOS.length).padStart(2, '0')}
+        MÓDULOS · {String(indice + 1).padStart(2, '0')} / {String(MODULOS.length).padStart(2, '0')}
       </p>
 
-      {/* Todo el bloque navega al módulo en pantalla. Sin card: solo tipografía. */}
-      <button
-        onClick={() => navigate(mod.path)}
-        className="group block text-left w-full"
-        style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
-      >
-        <div className="flex items-center gap-3.5">
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.span
-              key={indice}
-              initial={{ opacity: 0, scale: 0.7 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.7 }}
-              transition={T_SNAPPY}
-              className="shrink-0"
-              style={{ color: mod.color }}
-            >
-              <Icon className="h-7 w-7" strokeWidth={1.75} />
-            </motion.span>
-          </AnimatePresence>
-
-          {/* El título se descifra letra a letra (scramble). Va en monoespaciada
-              a propósito: con una fuente proporcional los caracteres aleatorios
-              harían bailar el ancho del texto en cada tick. El span exterior
-              aporta color y fuente porque TextScramble no acepta style. */}
-          <span
-            style={{ color: mod.color, fontFamily: "'JetBrains Mono', monospace" }}
+      {/* La altura mínima reserva el sitio del bloque más alto: al reemplazarse el
+          contenido, el pie del hero no debe saltar. */}
+      <div style={{ minHeight: '132px' }}>
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.button
+            key={mod.id}
+            variants={swapFade}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            onClick={() => navigate(mod.path)}
+            className="group block text-left w-full"
+            style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
           >
-            <TextScramble
-              key={indice}
-              as="span"
-              className="block text-2xl sm:text-3xl font-bold tracking-tight"
-              duration={1}
-              speed={0.03}
-              onScrambleComplete={alTerminarScramble}
-            >
-              {mod.title}
-            </TextScramble>
-          </span>
-        </div>
+            <div className="flex items-center gap-3">
+              <Icon
+                className="h-6 w-6 shrink-0"
+                strokeWidth={1.75}
+                style={{ color: mod.color }}
+              />
+              <h2
+                className="text-xl font-semibold tracking-tight"
+                style={{ color: 'var(--ij-text-primary)' }}
+              >
+                {mod.title}
+              </h2>
+            </div>
 
-        {/* Subtítulo y descripción se descifran a la vez que el título: mismo
-            key, mismo duration/speed, así que arrancan y terminan juntos. Van
-            en mono también por estabilidad: como cada carácter aleatorio mide
-            lo mismo que el real, el salto de línea no baila durante el efecto.
-            La altura mínima evita que el bloque salte entre descripciones. */}
-        <div style={{ minHeight: '96px' }} className="mt-5">
-          <div key={indice} className="space-y-2">
+            {/* Los algoritmos van en monoespaciada — son nombres propios de método,
+                se leen como identificadores. La descripción, en cambio, es prosa y
+                va en la fuente del cuerpo. */}
             <p
-              className="text-xs"
-              style={{
-                fontFamily: "'JetBrains Mono', monospace",
-                color: mod.color,
-                opacity: 0.85,
-              }}
+              className="mt-3 text-[11px]"
+              style={{ fontFamily: "'JetBrains Mono', monospace", color: mod.color }}
             >
-              <TextScramble as="span" duration={1} speed={0.03}>
-                {mod.subtitle}
-              </TextScramble>
+              {mod.subtitle}
             </p>
+
             <p
-              className="text-[13px] leading-relaxed max-w-md"
-              style={{
-                fontFamily: "'JetBrains Mono', monospace",
-                color: 'var(--ij-text-secondary)',
-              }}
+              className="mt-2 text-[13px] leading-relaxed max-w-md"
+              style={{ color: 'var(--ij-text-muted)' }}
             >
-              <TextScramble as="span" duration={1} speed={0.03}>
-                {mod.description}
-              </TextScramble>
+              {mod.description}
             </p>
+
             <span
-              className="inline-flex items-center gap-1.5 text-xs font-medium pt-1"
+              className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium"
               style={{ color: mod.color }}
             >
               Abrir módulo
-              <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1" />
+              <ArrowRight className="h-3.5 w-3.5 transition-transform duration-[160ms] group-hover:translate-x-0.5" />
             </span>
-          </div>
-        </div>
-      </button>
+          </motion.button>
+        </AnimatePresence>
+      </div>
 
-      {/* Puntos de progreso: el activo se alarga y toma el color del módulo. */}
-      <div className="flex items-center gap-2">
+      {/* Puntos de progreso: el activo se alarga y toma el color del módulo.
+          La transición se acota a `width`/`background-color` — `transition-all`
+          arrastraría propiedades que no queremos animar. */}
+      <div className="flex items-center gap-1.5">
         {MODULOS.map((m, i) => (
           <button
             key={m.id}
-            onClick={() => irA(i)}
+            onClick={() => setIndice(i)}
             title={m.title}
             aria-label={m.title}
-            className="h-1.5 rounded-full transition-all duration-300"
+            aria-current={i === indice}
+            className="h-1 rounded-full transition-[width,background-color] duration-[200ms]"
             style={{
-              width: i === indice ? '24px' : '8px',
+              width: i === indice ? '20px' : '6px',
               background: i === indice ? mod.color : 'var(--ij-bg-active)',
               border: 'none',
               padding: 0,

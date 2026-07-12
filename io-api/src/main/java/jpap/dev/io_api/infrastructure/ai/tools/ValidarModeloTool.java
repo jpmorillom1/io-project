@@ -3,6 +3,8 @@ package jpap.dev.io_api.infrastructure.ai.tools;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 import jpap.dev.io_api.infrastructure.ai.ChatContextStore;
+import jpap.dev.io_api.infrastructure.ai.actividad.ActividadRegistry;
+import jpap.dev.io_api.infrastructure.ai.actividad.FaseActividad;
 import jpap.dev.io_api.infrastructure.ai.dto.ValidacionResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -22,9 +24,11 @@ import java.util.List;
 public class ValidarModeloTool {
 
     private final ChatContextStore contextStore;
+    private final ActividadRegistry actividadRegistry;
 
-    public ValidarModeloTool(ChatContextStore contextStore) {
+    public ValidarModeloTool(ChatContextStore contextStore, ActividadRegistry actividadRegistry) {
         this.contextStore = contextStore;
+        this.actividadRegistry = actividadRegistry;
     }
 
     @Tool("""
@@ -53,6 +57,7 @@ public class ValidarModeloTool {
         );
 
         contextStore.obtener().validacion = validacion;
+        actividadRegistry.publicar(contextStore.obtener().sesionId, FaseActividad.VALIDANDO);
 
         log.info("[TOOL] registrarValidacion — esValido={}, errores={}",
                 esValido, erroresEncontrados.size());
