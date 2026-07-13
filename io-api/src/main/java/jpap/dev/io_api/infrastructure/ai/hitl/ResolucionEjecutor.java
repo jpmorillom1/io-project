@@ -100,44 +100,59 @@ public class ResolucionEjecutor {
             String resumenParaTutor
     ) {}
 
+    /**
+     * Lo que el tutor recibe está escrito en jerga (Q*, celdas, arcos, nodos, tableaux) porque es
+     * la salida del solver. Sin esta advertencia delante, el modelo tiende a copiarla tal cual al
+     * chat — y el estudiante acaba leyendo "la celda (2,3) entra a la base" en vez de "sale más
+     * barato mandar el arroz desde Manta". Encabeza los SIETE resúmenes, sea cual sea el módulo.
+     */
+    private static final String PREFACIO_REGISTRO = """
+            [MATERIA PRIMA INTERNA — NO ES UN BORRADOR DE TU RESPUESTA]
+            Lo que sigue viene en la notación del solver para que TÚ leas los datos correctos.
+            TRADÚCELO al lenguaje del problema del estudiante antes de escribir una sola línea:
+            el sujeto de tus frases es el recurso, el producto, la planta o la ruta del enunciado,
+            nunca un símbolo. No copies tablas ni iteraciones: la interfaz ya las muestra.
+
+            """;
+
     public Ejecucion ejecutar(ModeloResoluble modelo, MetodoResolucion metodo) {
         log.info("[HITL] ejecutando solver aprobado — metodo={}", metodo);
 
         if (metodo == MetodoResolucion.TRANSPORTE) {
             ModeloTransporte mt = (ModeloTransporte) modelo;
             SolveResult<SolucionTransporte> resultado = transporteUseCase.resolver(mt);
-            return new Ejecucion(null, null, resultado, null, null, null, null, formatearTransporte(resultado, mt));
+            return new Ejecucion(null, null, resultado, null, null, null, null, conRegistro(formatearTransporte(resultado, mt)));
         }
 
         if (metodo == MetodoResolucion.REDES) {
             ModeloRed mr = (ModeloRed) modelo;
             SolveResult<SolucionRed> resultado = redUseCase.resolver(mr);
-            return new Ejecucion(null, null, null, resultado, null, null, null, formatearRed(resultado, mr));
+            return new Ejecucion(null, null, null, resultado, null, null, null, conRegistro(formatearRed(resultado, mr)));
         }
 
         if (metodo == MetodoResolucion.BRANCH_AND_BOUND) {
             ModeloEntero me = (ModeloEntero) modelo;
             SolveResult<SolucionEntera> resultado = enteraUseCase.resolver(me);
-            return new Ejecucion(null, null, null, null, resultado, null, null, formatearEntero(resultado, me));
+            return new Ejecucion(null, null, null, null, resultado, null, null, conRegistro(formatearEntero(resultado, me)));
         }
 
         if (metodo == MetodoResolucion.INVENTARIO) {
             ModeloInventario mi = (ModeloInventario) modelo;
             SolveResult<SolucionInventario> resultado = inventarioUseCase.resolver(mi);
-            return new Ejecucion(null, null, null, null, null, resultado, null, formatearInventario(resultado, mi));
+            return new Ejecucion(null, null, null, null, null, resultado, null, conRegistro(formatearInventario(resultado, mi)));
         }
 
         if (metodo == MetodoResolucion.PROGRAMACION_DINAMICA) {
             ModeloDinamico md = (ModeloDinamico) modelo;
             SolveResult<SolucionDinamica> resultado = dinamicaUseCase.resolver(md);
-            return new Ejecucion(null, null, null, null, null, null, resultado, formatearDinamica(resultado, md));
+            return new Ejecucion(null, null, null, null, null, null, resultado, conRegistro(formatearDinamica(resultado, md)));
         }
 
         ModeloLP mlp = (ModeloLP) modelo;
 
         if (metodo == MetodoResolucion.GRAFICO) {
             SolveResult<SolucionGrafica> resultado = graficoUseCase.resolver(mlp);
-            return new Ejecucion(null, resultado, null, null, null, null, null, formatearGrafico(resultado));
+            return new Ejecucion(null, resultado, null, null, null, null, null, conRegistro(formatearGrafico(resultado)));
         }
 
         SolveResult<SolucionLP> resultado = switch (metodo) {
@@ -151,10 +166,14 @@ public class ResolucionEjecutor {
             case INVENTARIO -> throw new IllegalStateException("cubierto arriba");
             case PROGRAMACION_DINAMICA -> throw new IllegalStateException("cubierto arriba");
         };
-        return new Ejecucion(resultado, null, null, null, null, null, null, formatearTabular(resultado, metodo, mlp));
+        return new Ejecucion(resultado, null, null, null, null, null, null, conRegistro(formatearTabular(resultado, metodo, mlp)));
     }
 
     // ─── formato para el tutor (movido desde las @Tool de resolución) ────────────
+
+    private String conRegistro(String resumen) {
+        return PREFACIO_REGISTRO + resumen;
+    }
 
     /** El modelo entra aquí porque la sensibilidad no se entiende sin el tipo y el álgebra de cada restricción. */
     private String formatearTabular(SolveResult<SolucionLP> r, MetodoResolucion metodo, ModeloLP modelo) {

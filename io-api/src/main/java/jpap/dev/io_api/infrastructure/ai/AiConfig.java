@@ -240,7 +240,19 @@ public class AiConfig {
                 .build();
     }
 
+    /**
+     * System prompt del agente + la regla de registro común a todos los módulos.
+     *
+     * Va en un único fichero (prompts/common/registro_explicacion.txt) y no copiada en los
+     * siete prompts: es la misma regla para todos, y siete copias se habrían ido separando
+     * al primer retoque. Se concatena al FINAL a propósito — es lo último que el modelo lee
+     * antes del turno, y en la práctica eso pesa.
+     */
     private String cargarPrompt(String location) throws IOException {
+        return leer(location) + "\n" + leer("classpath:prompts/common/registro_explicacion.txt");
+    }
+
+    private String leer(String location) throws IOException {
         Resource resource = resourceLoader.getResource(location);
         return resource.getContentAsString(StandardCharsets.UTF_8);
     }
