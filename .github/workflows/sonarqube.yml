@@ -1,0 +1,59 @@
+name: SonarQube Analysis
+
+on:
+  push:
+    branches:
+      - master
+      - main
+      - develop
+  pull_request:
+    branches:
+      - master
+      - main
+
+jobs:
+  sonarqube:
+    name: SonarQube Scan (io-api + io-ui)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # historial completo para blame/new code de Sonar
+
+          
+      - name: Debug SonarQube reachability
+        run: |
+          curl -i -H "Authorization: Bearer ${{ secrets.SONAR_TOKEN }}" "${{ vars.SONAR_HOST_URL || 'https://server2.distribuidauce.org' }}/api/server/version"
+
+          
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Set up Gradle (con cache)
+        uses: gradle/actions/setup-gradle@v4
+
+      # Compila, corre tests unitarios y genera el XML de cobertura JaCoCo.
+      # -PciSkipContextTests: omite IoApiApplicationTests (necesita Postgres/Chroma/Groq).
+      - name: Compilar backend + tests + cobertura JaCoCo
+        working-directory: io-api
+        run: |
+          chmod +x gradlew
+          ./gradlew test jacocoTestReport -PciSkipContextTests
+
+      # Un solo análisis para todo el repo (proyecto g9-io-project):
+      # la configuración vive en sonar-project.properties en la raíz.
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@v6
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+
+      - name: SonarQube Quality Gate Check
+        uses: SonarSource/sonarqube-quality-gate-action@v1
+        timeout-minutes: 5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

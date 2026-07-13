@@ -38,10 +38,10 @@ spring:
 langchain4j:
   open-ai:
     chat-model:
-      api-key: ${GROQ_API_KEY}
+      api-key: ${GROQ_API_KEY:demo}
       base-url: https://api.groq.com/openai/v1
       model-name: ${GROQ_MODEL_NAME:llama-3.3-70b-versatile}
-      temperature: 0.7
+      temperature: 0.
       max-tokens: 2048
       log-requests: true
       log-responses: true
@@ -49,6 +49,16 @@ langchain4j:
 # ── Configuración propia de la app ─────────────────────────────────────────────
 app:
   chroma-url: ${CHROMA_URL:http://localhost:8000}
+  rag:
+    reingestar: ${RAG_REINGESTAR:true}
+    incluir-pdf: ${RAG_INCLUIR_PDF:true}
+  sesion:
+    # Días sin actividad tras los cuales se purga una sesión (memoria, historial y problemas).
+    retencion-dias: ${SESION_RETENCION_DIAS:30}
+  titulos:
+    # Modelo que nombra cada conversación en la barra lateral. Es una tarea de una línea:
+    # usa el modelo más pequeño de Groq, no el del tutor.
+    model-name: ${GROQ_MODELO_TITULOS:llama-3.1-8b-instant}
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 logging:

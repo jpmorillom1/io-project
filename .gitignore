@@ -1,12 +1,11 @@
 HELP.md
-CLAUDE.md
+
 
 .gradle
 build/
 !gradle/wrapper/gradle-wrapper.jar
 !**/src/main/**/build/
 !**/src/test/**/build/
-docs/
 ### STS ###
 .apt_generated
 .classpath
@@ -37,6 +36,8 @@ out/
 
 ### VS Code ###
 .vscode/
-!/CLAUDE.md
-!/CLAUDE.md
-CLAUDE.md
+
+### Environment ###
+.env
+io-api/dev/
+io-api/dev/langchain4j/service/AiServices.class

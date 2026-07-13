@@ -1,111 +1,240 @@
-:root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+@import "tailwindcss";
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
-
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
-  color-scheme: light dark;
-  color: var(--text);
-  background: var(--bg);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-
-  @media (max-width: 1024px) {
-    font-size: 16px;
-  }
-}
-
-@media (prefers-color-scheme: dark) {
+@layer base {
   :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+    --ij-bg-editor:    #1E1F22;
+    --ij-bg-secondary: #282B30;
+    --ij-bg-hover:     #393840;
+    --ij-bg-selection: #43454A;
+    --ij-bg-active:    #4E5157;
+
+    --ij-text-primary:   #DFE1E5;
+    --ij-text-secondary: #6F737A;
+    --ij-text-muted:     #9DA0A8;
+    --ij-text-default:   #BDC9C9;
+
+    --ij-cyan:    #51C8CF;
+    --ij-orange:  #C09468;
+    --ij-blue:    #76AEFF;
+    --ij-purple:  #CF84CF;
+    --ij-green:   #6CAB74;
+    --ij-teal:    #14C4B6;
+    --ij-red:     #FF5263;
+    --ij-amber:   #FFC859;
+    --ij-link:    #548AF7;
+    --ij-comment: #6E798A;
+
+    --ij-border: #393840;
+
+    /* Vocabulario de movimiento para CSS. Su equivalente en JS vive en
+       `lib/motion.ts` (EASE_OUT / T_SNAPPY / T_BASE) — son los mismos valores:
+       no introduzcas una curva nueva sin añadirla a los dos sitios.
+       Entrar/salir siempre ease-out; `ease-in` en UI arranca lento justo en el
+       instante que el usuario está mirando. */
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+
+    --dur-fast: 120ms;  /* hover, color, foco */
+    --dur-base: 200ms;  /* desplegables, cambios de estado */
   }
 
-  #social .button-icon {
-    filter: invert(1) brightness(2);
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    background-color: var(--ij-bg-secondary);
+    color: var(--ij-text-primary);
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-size: 13px;
+    line-height: 16px;
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: rgba(20, 196, 182, 0.28);
+    color: var(--ij-text-primary);
+  }
+
+  /* Anillo de foco visible y coherente para todo lo que se navega con teclado.
+     Solo `:focus-visible`: el clic con ratón no debe dejar el anillo pegado. */
+  :focus-visible {
+    outline: 2px solid var(--ij-blue);
+    outline-offset: 1px;
+    border-radius: 4px;
+  }
+
+  select {
+    background-color: var(--ij-bg-editor);
+    color: var(--ij-text-primary);
+    border: 1px solid var(--ij-border);
+    border-radius: 4px;
+    padding: 0 8px;
+    outline: none;
+  }
+
+  select:focus {
+    border-color: var(--ij-blue);
+  }
+
+  select option {
+    background-color: var(--ij-bg-secondary);
+    color: var(--ij-text-primary);
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: var(--ij-bg-secondary);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--ij-bg-active);
+    border-radius: 3px;
   }
 }
 
-body {
-  margin: 0;
+/* Markdown en burbujas del chat del agente */
+.chat-md {
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
-#root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
-  min-height: 100svh;
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
+.chat-md p {
+  margin: 0 0 0.5em;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.chat-md p:last-child {
+  margin-bottom: 0;
 }
 
-h1,
-h2 {
-  font-family: var(--heading);
-  font-weight: 500;
-  color: var(--text-h);
+.chat-md ul,
+.chat-md ol {
+  margin: 0.4em 0 0.5em 1.2em;
+  padding: 0;
+}
+.chat-md li {
+  margin-bottom: 0.2em;
 }
 
-h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
-  }
-}
-h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
-  }
-}
-p {
-  margin: 0;
+.chat-md strong {
+  color: var(--ij-text-primary);
+  font-weight: 600;
 }
 
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
+.chat-md em {
+  color: var(--ij-text-muted);
+  font-style: italic;
+}
+
+.chat-md code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.85em;
+  background: var(--ij-bg-secondary);
+  color: var(--ij-cyan);
+  border-radius: 3px;
+  padding: 0.1em 0.35em;
+  word-break: break-word;
+}
+
+.chat-md pre {
+  background: var(--ij-bg-secondary);
+  border: 1px solid var(--ij-border);
   border-radius: 4px;
-  color: var(--text-h);
+  padding: 0.6em 0.8em;
+  overflow-x: auto;
+  max-width: 100%;
+  margin: 0.5em 0;
+}
+.chat-md pre code {
+  background: none;
+  padding: 0;
+  color: var(--ij-text-primary);
+  font-size: 0.82em;
+  word-break: normal;
 }
 
-code {
-  font-size: 15px;
-  line-height: 135%;
-  padding: 4px 8px;
-  background: var(--code-bg);
+.chat-md blockquote {
+  border-left: 3px solid var(--ij-blue);
+  margin: 0.4em 0;
+  padding: 0.2em 0.75em;
+  color: var(--ij-text-muted);
+  font-style: italic;
 }
+
+.chat-md h1,
+.chat-md h2,
+.chat-md h3 {
+  color: var(--ij-teal);
+  font-weight: 600;
+  margin: 0.6em 0 0.3em;
+  line-height: 1.3;
+}
+.chat-md h1 { font-size: 1.05em; }
+.chat-md h2 { font-size: 1em; }
+.chat-md h3 { font-size: 0.95em; }
+
+.chat-md table {
+  border-collapse: collapse;
+  width: 100%;
+  max-width: 100%;
+  font-size: 0.88em;
+  margin: 0.5em 0;
+  display: block;
+  overflow-x: auto;
+}
+.chat-md th,
+.chat-md td {
+  border: 1px solid var(--ij-border);
+  padding: 0.3em 0.6em;
+  text-align: left;
+}
+.chat-md th {
+  background: var(--ij-bg-secondary);
+  color: var(--ij-text-primary);
+  font-weight: 600;
+}
+.chat-md tr:nth-child(even) td {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.chat-md a {
+  color: var(--ij-link);
+  text-decoration: underline;
+  overflow-wrap: anywhere;
+}
+
+.chat-md hr {
+  border: none;
+  border-top: 1px solid var(--ij-border);
+  margin: 0.6em 0;
+}
+
+/* KaTeX: hereda el color del tema y se ajusta al recuadro */
+.chat-md .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-width: 100%;
+  padding: 0.25em 0;
+}
+
+.chat-md .katex {
+  color: var(--ij-text-primary);
+  font-size: 1em;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  vertical-align: middle;
+}
+
+.chat-md .katex-html {
+  overflow-wrap: break-word;
+}
+

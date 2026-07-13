@@ -1,5 +1,6 @@
 plugins {
 	id 'java'
+	id 'jacoco'
 	id 'org.springframework.boot' version '4.1.0'
 	id 'io.spring.dependency-management' version '1.1.7'
 }
@@ -22,6 +23,7 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-flyway'
 	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
 	implementation 'org.flywaydb:flyway-database-postgresql'
+	implementation 'org.springframework.boot:spring-boot-starter-actuator'
 	compileOnly 'org.projectlombok:lombok'
 	developmentOnly 'org.springframework.boot:spring-boot-devtools'
 	runtimeOnly 'org.postgresql:postgresql'
@@ -38,11 +40,42 @@ dependencies {
 	// LangChain4j — chat model OpenAI-compatible (se apunta a Groq)
 	implementation 'dev.langchain4j:langchain4j-open-ai-spring-boot4-starter:1.13.0-beta23'
 	// LangChain4j — vector store ChromaDB
-	implementation 'dev.langchain4j:langchain4j-chroma:1.13.0-beta23'
+	// Excluye el cliente JDK para evitar conflicto con el Spring RestClient del starter
+	implementation('dev.langchain4j:langchain4j-chroma:1.13.0-beta23') {
+		exclude group: 'dev.langchain4j', module: 'langchain4j-http-client-jdk'
+	}
 	// LangChain4j — modelo de embeddings local (sin API key, para RAG en dev)
 	implementation 'dev.langchain4j:langchain4j-embeddings-all-minilm-l6-v2-q:1.13.0-beta23'
+	// LangChain4j — parser PDF via Apache PDFBox
+	implementation 'dev.langchain4j:langchain4j-document-parser-apache-pdfbox:1.13.0-beta23'
+	// LangChain4j — módulo agéntico: HumanInTheLoop + PendingResponse para aprobación humana
+	implementation 'dev.langchain4j:langchain4j-agentic:1.13.0-beta23'
+}
+
+// Expone nombres de parámetros en bytecode → Jackson puede deserializar records sin @JsonProperty
+tasks.withType(JavaCompile).configureEach {
+	options.compilerArgs += ['-parameters']
 }
 
 tasks.named('test') {
 	useJUnitPlatform()
+	finalizedBy tasks.jacocoTestReport
+	// En CI no hay Postgres/Chroma/Groq: -PciSkipContextTests omite los tests
+	// que cargan el contexto Spring completo (IoApiApplicationTests y los *IT)
+	if (project.hasProperty('ciSkipContextTests')) {
+		exclude '**/IoApiApplicationTests*'
+		exclude '**/*IT.class'
+	}
+}
+
+jacoco {
+	toolVersion = '0.8.13'
+}
+
+jacocoTestReport {
+	dependsOn tasks.test
+	reports {
+		xml.required = true   // SonarQube lee el XML
+		html.required = true
+	}
 }
