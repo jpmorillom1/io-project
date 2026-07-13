@@ -47,6 +47,8 @@ jobs:
           ssh "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" "cat > ~/io-project/.env" <<EOF
           GROQ_API_KEY=${{ secrets.GROQ_API_KEY }}
           GROQ_MODEL_NAME=${{ secrets.GROQ_MODEL_NAME }}
+          TUNNEL_TOKEN=${{ secrets.CLOUDFLARE_TUNNEL_TOKEN }}
+          CORS_ALLOWED_ORIGINS=${{ secrets.APP_URL }}
           EOF
 
       # RAG_REINGESTAR queda en true (default del compose): reingesta el corpus a

@@ -15,3 +15,14 @@ output "private_key_path" {
 output "ssh_command" {
   value = "ssh -i ${local_sensitive_file.private_key.filename} ubuntu@${aws_eip.this.public_ip}"
 }
+
+output "app_url" {
+  description = "URL pública de la app, servida vía Cloudflare Tunnel (HTTPS real)"
+  value       = "https://${local.hostname}"
+}
+
+output "cloudflare_tunnel_token" {
+  description = "Token para el contenedor cloudflared (TUNNEL_TOKEN en .env / secret CLOUDFLARE_TUNNEL_TOKEN en GitHub)"
+  value       = data.cloudflare_zero_trust_tunnel_cloudflared_token.this.token
+  sensitive   = true
+}

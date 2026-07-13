@@ -5,4 +5,13 @@ root_volume_size = 30
 
 # Recomendado: restringir a tu propia IP en vez de 0.0.0.0/0, ej. "1.2.3.4/32"
 # (podés obtenerla con `curl -s https://checkip.amazonaws.com`)
-ssh_ingress_cidr = "0.0.0.0/0"
+ssh_ingress_cidr          = "0.0.0.0/0"
+enable_direct_http_access = false # true si además querés entrar por http://<ip> sin el túnel
+
+# ── Cloudflare Tunnel ──────────────────────────────────────────────────────────
+# El dominio debe estar dado de alta en Cloudflare (nameservers apuntando ahí).
+cloudflare_api_token  = "" # User API Tokens > Create Token: Account.Cloudflare Tunnel:Edit + Zone.DNS:Edit
+cloudflare_account_id = "" # dashboard de Cloudflare > barra lateral derecha
+cloudflare_zone_id    = "" # dashboard de la zona del dominio > barra lateral derecha
+root_domain           = "midominio.com"
+subdomain             = "app" # queda en https://app.midominio.com; "" usa el dominio raíz

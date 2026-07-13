@@ -58,9 +58,22 @@ services:
       context: ./io-ui
     container_name: io-ui
     ports:
+      # Solo relevante si infra/ habilita enable_direct_http_access; con el
+      # túnel de Cloudflare (ver servicio `cloudflared`) no hace falta abrir esto afuera.
       - "80:80"
     depends_on:
       - api
+    restart: unless-stopped
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: io-cloudflared
+    command: tunnel run
+    environment:
+      # Generado por infra/cloudflare.tf (output cloudflare_tunnel_token)
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN}
+    depends_on:
+      - ui
     restart: unless-stopped
 
 volumes:

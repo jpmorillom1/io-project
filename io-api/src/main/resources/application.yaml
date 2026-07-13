@@ -49,6 +49,9 @@ langchain4j:
 # ── Configuración propia de la app ─────────────────────────────────────────────
 app:
   chroma-url: ${CHROMA_URL:http://localhost:8000}
+  cors:
+    # Orígenes permitidos para /api/** (ver WebConfig). Separados por coma si son varios.
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:*}
   rag:
     reingestar: ${RAG_REINGESTAR:true}
     incluir-pdf: ${RAG_INCLUIR_PDF:true}
