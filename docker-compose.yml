@@ -7,7 +7,8 @@ services:
       POSTGRES_USER: io_user
       POSTGRES_PASSWORD: io_pass
     ports:
-      - "5432:5432"
+      # Solo accesible desde el propio host (p. ej. vía túnel SSH), no expuesto a internet
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -23,14 +24,44 @@ services:
       IS_PERSISTENT: "TRUE"
       CHROMA_SERVER_HOST: 0.0.0.0
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - chromadata:/chroma/chroma
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8000/api/v1/heartbeat || exit 1"]
+      # La imagen de Chroma no trae curl/wget; se comprueba que el puerto acepte conexiones
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/8000' || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
+
+  api:
+    build:
+      context: ./io-api
+    container_name: io-api
+    env_file:
+      - .env
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/io_platform
+      DB_USER: io_user
+      DB_PASSWORD: io_pass
+      CHROMA_URL: http://chroma:8000
+      RAG_REINGESTAR: ${RAG_REINGESTAR:-true}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      chroma:
+        condition: service_healthy
+    restart: unless-stopped
+
+  ui:
+    build:
+      context: ./io-ui
+    container_name: io-ui
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+    restart: unless-stopped
 
 volumes:
   pgdata:

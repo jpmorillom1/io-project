@@ -36,5 +36,8 @@ out/
 
 ### VS Code ###
 .vscode/
+
+### Environment ###
+.env
 io-api/dev/
 io-api/dev/langchain4j/service/AiServices.class

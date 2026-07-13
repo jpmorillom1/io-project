@@ -1,0 +1,56 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - master
+
+# Evita que dos pushes seguidos corran el deploy en paralelo y se pisen en la EC2
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy a EC2 (io-api + io-ui)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configurar clave SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.EC2_SSH_KEY }}
+
+      - name: Agregar el host a known_hosts
+        run: ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts
+
+      # No sincroniza .env (vive solo en el servidor, se reescribe en el paso de abajo)
+      # ni infra/ (contiene el .pem y el estado de Terraform, no hace falta en el servidor).
+      - name: Sincronizar el proyecto con la EC2
+        run: |
+          rsync -avz --delete \
+            --exclude '.git' \
+            --exclude '.github' \
+            --exclude 'infra' \
+            --exclude '.env' \
+            --exclude 'io-api/build' \
+            --exclude 'io-api/.gradle' \
+            --exclude 'io-ui/node_modules' \
+            --exclude 'io-ui/dist' \
+            ./ "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:~/io-project/"
+
+      - name: Escribir .env en la EC2
+        run: |
+          ssh "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" "cat > ~/io-project/.env" <<EOF
+          GROQ_API_KEY=${{ secrets.GROQ_API_KEY }}
+          GROQ_MODEL_NAME=${{ secrets.GROQ_MODEL_NAME }}
+          EOF
+
+      # RAG_REINGESTAR queda en true (default del compose): reingesta el corpus a
+      # Chroma en cada deploy.
+      - name: Levantar los contenedores (docker compose up --build)
+        run: |
+          ssh "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" "cd ~/io-project && docker compose up -d --build && docker image prune -f"
