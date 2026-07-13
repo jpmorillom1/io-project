@@ -34,8 +34,14 @@ resource "local_sensitive_file" "private_key" {
 }
 
 resource "aws_security_group" "this" {
-  name        = "${var.project_name}-sg"
-  description = "SSH + HTTP/HTTPS para ${var.project_name}"
+  # name_prefix (no name fijo): con create_before_destroy, Terraform crea el SG
+  # nuevo *antes* de borrar el viejo, y dos SG no pueden compartir nombre en la VPC.
+  name_prefix = "${var.project_name}-sg-"
+  description = "SSH (+ HTTP/HTTPS opcional) para ${var.project_name}"
+
+  lifecycle {
+    create_before_destroy = true
+  }
 
   ingress {
     description = "SSH"
@@ -45,20 +51,18 @@ resource "aws_security_group" "this" {
     cidr_blocks = [var.ssh_ingress_cidr]
   }
 
-  ingress {
-    description = "HTTP - nginx sirve el frontend y reenvia /api al backend"
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = [var.http_ingress_cidr]
-  }
-
-  ingress {
-    description = "HTTPS - para cuando se agregue TLS (certbot)"
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = [var.http_ingress_cidr]
+  # Cloudflare Tunnel (cloudflared) es saliente: no hace falta abrir 80/443 para
+  # que la app sea accesible por https://<subdominio>.<dominio>. Estas reglas solo
+  # existen si querés ademas acceso HTTP directo por la IP (enable_direct_http_access).
+  dynamic "ingress" {
+    for_each = var.enable_direct_http_access ? [80, 443] : []
+    content {
+      description = "HTTP/HTTPS directo (acceso opcional por IP, sin el tunel)"
+      from_port   = ingress.value
+      to_port     = ingress.value
+      protocol    = "tcp"
+      cidr_blocks = [var.http_ingress_cidr]
+    }
   }
 
   egress {
@@ -85,7 +89,8 @@ resource "aws_instance" "this" {
   }
 
   # Postgres/Chroma quedan en 127.0.0.1 dentro del contenedor (ver docker-compose.yml
-  # en la raíz del repo) — solo 22/80/443 llegan desde fuera vía el security group.
+  # en la raíz del repo). El tráfico web entra por Cloudflare Tunnel (saliente desde
+  # el contenedor cloudflared), no por el security group.
   user_data = <<-EOF
     #!/bin/bash
     set -e
