@@ -1,5 +1,4 @@
 import { motion } from 'motion/react'
-import { ChatPanel } from '@/components/chat/ChatPanel'
 import { ShaderBackdrop } from '@/components/home/ShaderBackdrop'
 import { ModuloRotativo } from '@/components/home/ModuloRotativo'
 import { AnimatedGroup } from '@/components/motion-primitives/animated-group'
@@ -16,23 +15,12 @@ import { Sparkles, MessageSquareText } from 'lucide-react'
  */
 export function HomeWorkspace() {
   return (
-    <div className="flex h-full overflow-hidden gap-3">
-      {/* Panel izquierdo — Asistente Pivot */}
-      <div
-        className="w-[420px] shrink-0 flex flex-col overflow-hidden rounded-[10px]"
-        style={{
-          background: 'var(--ij-bg-editor)',
-          boxShadow: '0 0 0 1px var(--ij-bg-editor)',
-        }}
-      >
-        <ChatPanel />
-      </div>
-
-      {/* Panel derecho — hero de bienvenida sobre la superficie del editor. */}
-      <div
-        className="flex-1 relative overflow-hidden rounded-[10px]"
-        style={{ background: 'var(--ij-bg-editor)' }}
-      >
+    // Solo el panel derecho: el chat lo monta AppShell una única vez, por encima
+    // de las rutas, para que no se remonte al cambiar de módulo.
+    <div
+      className="h-full relative overflow-hidden rounded-[10px]"
+      style={{ background: 'var(--ij-bg-editor)' }}
+    >
         {/* Glow de esquina: el canvas va hundido en la esquina inferior derecha,
             con su centro casi sobre el vértice, así que solo asoma media onda.
             El shader pinta con alfa y la máscara radial difumina el borde; el
@@ -43,7 +31,11 @@ export function HomeWorkspace() {
           className="absolute pointer-events-none"
           initial={{ opacity: 0 }}
           animate={{ opacity: 0.32 }}
-          transition={{ duration: 1.6, ease: 'easeOut', delay: 0.2 }}
+          // El fundido de entrada es CORTO y sin espera: el home se remonta cada vez
+          // que vuelves a él, y un fundido largo se leía como "el glow tarda en
+          // aparecer". Que el movimiento de las ondas sea lento (ver `rate`) es otra
+          // cosa distinta — son dos relojes independientes.
+          transition={{ duration: 0.5, ease: 'easeOut' }}
           style={{
             bottom: '-85%',
             right: '-75%',
@@ -56,7 +48,7 @@ export function HomeWorkspace() {
               'radial-gradient(closest-side at 50% 50%, #000 30%, transparent 72%)',
           }}
         >
-          <ShaderBackdrop rate={0.5} />
+          <ShaderBackdrop rate={0.18} />
         </motion.div>
 
         {/* Contenido: centrado vertical real por flex, sin sesgos en vh. */}
@@ -110,7 +102,6 @@ export function HomeWorkspace() {
             </div>
           </div>
         </div>
-      </div>
     </div>
   )
 }

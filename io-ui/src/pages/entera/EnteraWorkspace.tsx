@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { ChatPanel } from '@/components/chat/ChatPanel'
 import { EnteraModelEditor } from '@/components/entera/EnteraModelEditor'
 import { EnteraResultViewer } from '@/components/entera/EnteraResultViewer'
 import { AnimatedGroup } from '@/components/motion-primitives/animated-group'
@@ -18,17 +17,9 @@ export function EnteraWorkspace() {
   const isIdle = status === 'IDLE'
 
   return (
-    <div className="flex h-full overflow-hidden gap-3">
-      {/* Panel izquierdo — Asistente Pivot (card flotante) */}
-      <div
-        className="w-[420px] shrink-0 flex flex-col overflow-hidden rounded-[10px]"
-        style={{ background: 'var(--ij-bg-editor)', boxShadow: '0 0 0 1px var(--ij-bg-editor)' }}
-      >
-        <ChatPanel />
-      </div>
-
-      {/* Panel derecho */}
-      <div className="flex-1 overflow-y-auto">
+    // Solo el panel del módulo: el chat lo monta AppShell una única vez, por encima
+    // de las rutas, para que no se remonte al cambiar de módulo.
+    <div className="h-full overflow-y-auto">
         {isIdle ? (
           <div className="flex flex-col items-center justify-center h-full p-12 text-center gap-4">
             <div
@@ -95,8 +86,7 @@ export function EnteraWorkspace() {
             {resultadoEntero && <Separator />}
             {resultadoEntero && <EnteraResultViewer resultado={resultadoEntero} />}
           </AnimatedGroup>
-        )}
-      </div>
+      )}
     </div>
   )
 }

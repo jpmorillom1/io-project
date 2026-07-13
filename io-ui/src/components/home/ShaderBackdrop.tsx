@@ -75,11 +75,20 @@ function buildProgram(gl: WebGL2RenderingContext): WebGLProgram {
   return prog
 }
 
+/**
+ * Fotograma desde el que arranca la onda. No es 0 a proposito: el home se remonta
+ * cada vez que vuelves a el, y en t=0 las cinco familias de anillos estan casi
+ * superpuestas — el glow salia plano y tardaba en "abrirse". Aqui ya esta formado
+ * desde el primer fotograma.
+ */
+const FASE_INICIAL = 20
+
 interface Props {
   /**
    * Unidades de tiempo del shader por segundo. El ejemplo original avanzaba
    * 0.05/fotograma (3/s a 60 Hz) y ademas dependia del refresco; aqui es
-   * tiempo real y por defecto va bastante mas calmado.
+   * tiempo real y va MUY calmado: es un elemento ambiental permanente, no un
+   * efecto que reclame la vista. Bajarlo alarga el ciclo de la onda.
    */
   rate?: number
   className?: string
@@ -136,9 +145,6 @@ export function ShaderBackdrop({ rate = 0.8, className }: Props) {
     let rafId: number
     const t0 = performance.now()
 
-    /** Fotograma con ondas ya formadas: el que se congela con reduced-motion. */
-    const T_CONGELADO = 20
-
     function pintar(t: number) {
       ajustarTamano()
       gl.uniform1f(uTime, t)
@@ -153,10 +159,10 @@ export function ShaderBackdrop({ rate = 0.8, className }: Props) {
       // Un rAF que repinta el mismo fotograma para siempre gasta GPU y batería sin
       // dibujar nada nuevo. El ResizeObserver se encarga de repintar si hace falta.
       if (rateRef.current === 0) {
-        pintar(T_CONGELADO)
+        pintar(FASE_INICIAL)
         return
       }
-      pintar(((performance.now() - t0) / 1000) * rateRef.current)
+      pintar(FASE_INICIAL + ((performance.now() - t0) / 1000) * rateRef.current)
       rafId = requestAnimationFrame(frame)
     }
 
@@ -165,7 +171,7 @@ export function ShaderBackdrop({ rate = 0.8, className }: Props) {
     // hay que volver a pintar a mano o el glow desaparecería al cambiar de tamaño.
     const ro = new ResizeObserver(() => {
       ajustarTamano()
-      if (rateRef.current === 0) pintar(T_CONGELADO)
+      if (rateRef.current === 0) pintar(FASE_INICIAL)
     })
     ro.observe(canvas)
 
