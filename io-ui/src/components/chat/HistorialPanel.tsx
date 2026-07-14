@@ -12,6 +12,7 @@ const NOMBRE_MODULO: Record<ModuloActivo, string> = {
   REDES: 'Redes',
   INVENTARIO: 'Inventarios',
   DINAMICA: 'Prog. dinámica',
+  GENERAL: 'General',
 }
 
 const MINUTO = 60_000

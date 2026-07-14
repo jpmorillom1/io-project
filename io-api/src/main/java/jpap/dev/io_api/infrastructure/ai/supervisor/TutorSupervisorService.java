@@ -29,7 +29,8 @@ public class TutorSupervisorService {
         TRANSPORTE,
         REDES,
         ENTERA,
-        DINAMICA
+        DINAMICA,
+        GENERAL
     }
 
     private final PlSubAgent plSubAgent;
@@ -38,6 +39,7 @@ public class TutorSupervisorService {
     private final RedesSubAgent redesSubAgent;
     private final EnteraSubAgent enteraSubAgent;
     private final DinamicaSubAgent dinamicaSubAgent;
+    private final GeneralSubAgent generalSubAgent;
     private final ModuloClassifierService moduloClassifierService;
     private final SesionRepository sesionRepository;
     private final ActividadRegistry actividadRegistry;
@@ -48,6 +50,7 @@ public class TutorSupervisorService {
                                   RedesSubAgent redesSubAgent,
                                   EnteraSubAgent enteraSubAgent,
                                   DinamicaSubAgent dinamicaSubAgent,
+                                  GeneralSubAgent generalSubAgent,
                                   ModuloClassifierService moduloClassifierService,
                                   SesionRepository sesionRepository,
                                   ActividadRegistry actividadRegistry) {
@@ -57,6 +60,7 @@ public class TutorSupervisorService {
         this.redesSubAgent = redesSubAgent;
         this.enteraSubAgent = enteraSubAgent;
         this.dinamicaSubAgent = dinamicaSubAgent;
+        this.generalSubAgent = generalSubAgent;
         this.moduloClassifierService = moduloClassifierService;
         this.sesionRepository = sesionRepository;
         this.actividadRegistry = actividadRegistry;
@@ -71,6 +75,7 @@ public class TutorSupervisorService {
             case REDES -> "Redes";
             case ENTERA -> "PL Entera";
             case DINAMICA -> "Programación Dinámica";
+            case GENERAL -> "Conversación General";
         };
     }
 
@@ -86,6 +91,7 @@ public class TutorSupervisorService {
             case ENTERA -> enteraSubAgent.chat(sesionId, mensaje);
             case DINAMICA -> dinamicaSubAgent.chat(sesionId, mensaje);
             case PL -> plSubAgent.chat(sesionId, mensaje);
+            case GENERAL -> generalSubAgent.chat(sesionId, mensaje);
         };
     }
 

@@ -19,14 +19,18 @@ const SESSION_KEY = 'io_sesion_id'
 
 type Modulo = 'lp' | 'transporte' | 'redes' | 'pl-entera' | 'inventario' | 'dinamica'
 
-/** Ruta del workspace de cada módulo del backend. Los nombres no coinciden en dos casos. */
-const RUTA_DE_MODULO: Record<ModuloActivo, Modulo> = {
+/**
+ * Ruta del workspace de cada módulo del backend. Los nombres no coinciden en dos casos.
+ * GENERAL no tiene workspace propio: mapea a null, que irAModulo ya trata como no-op.
+ */
+const RUTA_DE_MODULO: Record<ModuloActivo, Modulo | null> = {
   PL: 'lp',
   ENTERA: 'pl-entera',
   TRANSPORTE: 'transporte',
   REDES: 'redes',
   INVENTARIO: 'inventario',
   DINAMICA: 'dinamica',
+  GENERAL: null,
 }
 
 interface ChatContextValue {

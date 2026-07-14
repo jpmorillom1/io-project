@@ -167,7 +167,7 @@ export interface Actividad {
 // ── Historial de conversaciones ──────────────────────────────────────────────
 
 /** Módulo que atiende una sesión. Es el nombre del enum ModuloIO del backend. */
-export type ModuloActivo = 'PL' | 'INVENTARIO' | 'TRANSPORTE' | 'REDES' | 'ENTERA' | 'DINAMICA'
+export type ModuloActivo = 'PL' | 'INVENTARIO' | 'TRANSPORTE' | 'REDES' | 'ENTERA' | 'DINAMICA' | 'GENERAL'
 
 /** Mensaje del transcript persistido. */
 export interface MensajeHistorial {
