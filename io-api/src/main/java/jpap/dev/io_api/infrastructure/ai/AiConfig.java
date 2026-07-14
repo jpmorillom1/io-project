@@ -170,6 +170,18 @@ public class AiConfig {
                 .build();
     }
 
+    @Bean
+    public GeneralSubAgent generalSubAgent(ChatModel chatModel,
+                                           ContentRetriever contentRetriever) throws IOException {
+        String systemPrompt = cargarPrompt("classpath:prompts/subagents/general_system_prompt.txt");
+        return AiServices.builder(GeneralSubAgent.class)
+                .chatModel(new RetryingChatModel(chatModel))
+                .chatMemoryProvider(memoriaDeSesion())
+                .systemMessageProvider(memId -> systemPrompt)
+                .contentRetriever(contentRetriever)
+                .build();
+    }
+
     /**
      * Tutor monolítico heredado (compatibilidad retroactiva).
      */
