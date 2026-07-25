@@ -1,0 +1,21 @@
+{
+  "name": "io-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Pruebas funcionales E2E (Playwright) de la plataforma Ío. Paquete aislado del bundle de io-ui.",
+  "type": "module",
+  "scripts": {
+    "install:browsers": "playwright install --with-deps chromium",
+    "test": "playwright test",
+    "test:api": "playwright test api/",
+    "test:ui": "playwright test funcional/",
+    "test:no-ai": "playwright test --grep-invert @ai",
+    "test:ai": "playwright test --grep @ai",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  }
+}

@@ -1,0 +1,90 @@
+name: E2E (Playwright)
+
+# Pruebas funcionales E2E contra el AMBIENTE DE PRUEBAS ya desplegado.
+# El backend completo no arranca fácil en CI (necesita Postgres/Chroma/Groq), así que
+# los tests apuntan a la URL del despliegue (Cloudflare Tunnel) vía variables del repo:
+#   vars.API_BASE_URL   p.ej. https://<host>/api/v1
+#   vars.E2E_BASE_URL   p.ej. https://<host>
+#   vars.E2E_RUN_AI     "true" para habilitar los specs @ai (chat con LLM)
+#   secrets.GROQ_API_KEY clave del LLM (solo para el job @ai)
+
+on:
+  pull_request:
+    branches: [master, main, develop]
+  workflow_dispatch:
+  schedule:
+    - cron: '0 6 * * 1'   # lunes 06:00 UTC — verificación periódica del ambiente
+
+defaults:
+  run:
+    working-directory: io-ui/e2e
+
+jobs:
+  e2e-deterministas:
+    name: Funcional (sin LLM)
+    runs-on: ubuntu-latest
+    if: ${{ vars.API_BASE_URL != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Instalar dependencias
+        run: npm install
+
+      - name: Instalar Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Ejecutar E2E (excluye @ai)
+        run: npm run test:no-ai
+        env:
+          API_BASE_URL: ${{ vars.API_BASE_URL }}
+          E2E_BASE_URL: ${{ vars.E2E_BASE_URL }}
+          CI: 'true'
+
+      - name: Subir reporte
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            io-ui/e2e/report
+          retention-days: 14
+
+  e2e-ai:
+    name: Funcional con LLM (@ai)
+    runs-on: ubuntu-latest
+    if: ${{ vars.API_BASE_URL != '' && vars.E2E_RUN_AI == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Instalar dependencias
+        run: npm install
+
+      - name: Instalar Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Ejecutar E2E @ai
+        run: npm run test:ai
+        env:
+          API_BASE_URL: ${{ vars.API_BASE_URL }}
+          E2E_BASE_URL: ${{ vars.E2E_BASE_URL }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          CI: 'true'
+
+      - name: Subir reporte @ai
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-ai
+          path: |
+            io-ui/e2e/report
+          retention-days: 14

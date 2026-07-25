@@ -30,7 +30,7 @@ export function TableauViewer({ resultado }: Props) {
   const esUltimoPaso = nav.numeroPaso === nav.totalPasos
 
   return (
-    <Card>
+    <Card data-testid="resultado-lp">
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <CardTitle>③ Tableau paso a paso</CardTitle>
