@@ -324,6 +324,7 @@ export function ApprovalCard({ solicitud, onDecidir, disabled }: Props) {
 
   return (
     <div
+      data-testid="hitl-card"
       className="rounded-[4px] p-3 space-y-2.5"
       style={{
         background: 'var(--ij-bg-hover)',
@@ -370,6 +371,7 @@ export function ApprovalCard({ solicitud, onDecidir, disabled }: Props) {
         <div className="flex gap-2">
           <Button
             size="sm"
+            data-testid="hitl-aprobar"
             className="flex-1 rounded-[4px]"
             disabled={disabled}
             onClick={() => onDecidir(true, null)}
@@ -380,6 +382,7 @@ export function ApprovalCard({ solicitud, onDecidir, disabled }: Props) {
           <Button
             size="sm"
             variant="outline"
+            data-testid="hitl-rechazar"
             className="flex-1 rounded-[4px]"
             disabled={disabled}
             onClick={() => setRechazando(true)}
@@ -409,6 +412,7 @@ export function ApprovalCard({ solicitud, onDecidir, disabled }: Props) {
             <Button
               size="sm"
               variant="destructive"
+              data-testid="hitl-confirmar-rechazo"
               className="flex-1 rounded-[4px]"
               disabled={disabled}
               onClick={() => onDecidir(false, comentario.trim() || null)}

@@ -1,0 +1,36 @@
+# Configuración de gitleaks — detección de secretos en el repositorio.
+# Cubre VUL-01 / RNF-SEC-01 del plan de pruebas.
+#
+# Uso:
+#   gitleaks detect --source . --report-path gitleaks-report.json
+#   gitleaks detect --config .gitleaks.toml   (para incluir esta allowlist)
+
+title = "Ío — reglas de detección de secretos"
+
+# Hereda el set de reglas por defecto de gitleaks (API keys, tokens, claves privadas…).
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Rutas y patrones que NO son secretos reales (ejemplos, docs, plantillas)."
+
+paths = [
+  '''\.md$''',                       # documentación con placeholders
+  '''docs/.*''',
+  '''entrega-final/.*''',
+  '''.*\.example$''',
+  '''.*application\.yml\.example$''',
+  '''io-ui/e2e/fixtures/.*''',       # datos de prueba, sin secretos
+]
+
+regexes = [
+  '''GROQ_API_KEY''',                # la CADENA literal (nombre de la env var), no su valor
+  '''GROQ_MODEL_NAME''',
+  '''CLOUDFLARE_TUNNEL_TOKEN''',
+  '''NVD_API_KEY''',
+  '''your[-_]?api[-_]?key''',
+  '''<[A-Z_]+>''',                   # placeholders tipo <SUBDOMINIO>
+  '''\$\{[A-Z_]+\}''',               # interpolaciones ${VAR}
+]
+
+# Los valores reales llegan por variables de entorno / GitHub Secrets — nunca al repo.

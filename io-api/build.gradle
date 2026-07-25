@@ -3,6 +3,9 @@ plugins {
 	id 'jacoco'
 	id 'org.springframework.boot' version '4.1.0'
 	id 'io.spring.dependency-management' version '1.1.7'
+	// OWASP Dependency-Check (SCA): analiza las dependencias contra la base de CVEs (NVD).
+	// Si la versión no está disponible en tu red, ajústala a la última estable publicada.
+	id 'org.owasp.dependencycheck' version '10.0.4'
 }
 
 group = 'jpap.dev'
@@ -78,4 +81,28 @@ jacocoTestReport {
 		xml.required = true   // SonarQube lee el XML
 		html.required = true
 	}
+}
+
+// ─────────────────────────── OWASP Dependency-Check ───────────────────────────
+// Análisis de composición de software (SCA): cruza las dependencias con la NVD.
+//   gradle dependencyCheckAnalyze     → genera build/reports/dependency-check-report.*
+// Cubre VUL-06 / RNF-SEC-06 del plan de pruebas.
+dependencyCheck {
+	// Falla el build ante cualquier CVE de severidad Alta/Crítica (CVSS >= 7.0).
+	failBuildOnCVSS = 7.0f
+	formats = ['HTML', 'JSON', 'SARIF']
+	// Falsos positivos justificados (con comentario y fecha) van aquí.
+	suppressionFile = 'dependency-check-suppression.xml'
+	// La NVD exige API key para descargas sin rate-limit severo. Se toma del entorno.
+	nvd {
+		apiKey = System.getenv('NVD_API_KEY')
+	}
+	// Analizadores irrelevantes para un proyecto Java puro: acelera el escaneo.
+	analyzers {
+		assemblyEnabled = false
+		nodeAuditEnabled = false
+		nodeEnabled = false
+	}
+	// No rompas el análisis por un módulo de test con un CVE informativo.
+	skipConfigurations = ['testAnnotationProcessor', 'testCompileOnly']
 }

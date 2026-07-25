@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Supresiones de OWASP Dependency-Check.
+
+  Cada supresión DEBE llevar un comentario con: (1) por qué es un falso positivo o un
+  riesgo aceptado, (2) quién lo aprobó, (3) la fecha. Revisar periódicamente: una
+  supresión sin justificación vigente es deuda de seguridad.
+
+  Formato de ejemplo (dejar comentado hasta que haga falta):
+
+  <suppress>
+    <notes><![CDATA[
+      Falso positivo: el CVE aplica al módulo X que no usamos en runtime.
+      Aprobado por: <nombre> — 2026-07-25.
+    ]]></notes>
+    <cve>CVE-0000-00000</cve>
+  </suppress>
+-->
+<suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
+</suppressions>
